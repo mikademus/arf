@@ -2,17 +2,21 @@
 |----------------------------------------------------------------------------------------------------------|
 
 # Arf! — A Readable Format
-A tiny, human-centred data language for hierarchical configs and tables
+
+| **A tiny, human-centred data language for hierarchical configs and tables** |
+|-----------------------------------------------------------------------------|
 
 Arf! (“A Readable Format”, also the bark of an enthusiastic small dog) is a compact, predictable data language built for human readability without giving up structure. It mixes hierarchical categories, key/value pairs, and TOOL-style tables that can be subdivided into named subsections.
 
 The goals are simple:
 
-* Easier to write and read than JSON
-* Less fragile and surprising than YAML
-* More flexible than TOML
-* Much more expressive than plain TOOL tables
+* Allow key/value and tabular data
 * Minimal syntax, predictable parsing, indentation-free structure
+* Be an improvement over leading alternatives:
+  * Easier to write and read than JSON
+  * Less fragile and surprising than YAML
+  * More flexible than TOML
+  * Much more expressive than plain TOOL tables
 
 ## Overview
 
