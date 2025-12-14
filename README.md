@@ -1,6 +1,3 @@
-| :exclamation:  Alpha-state software fully buggy and somewhat usable. Do not use in production (yet) :)  |
-|----------------------------------------------------------------------------------------------------------|
-
 # Arf! — A Readable Format
 
 | **A tiny, human-centred data language for hierarchical configs and tables** |
@@ -192,6 +189,11 @@ Columns are separated by **two or more spaces**.
 ```
 # name    type    value
 ```
+Headers can be type annotated,
+```
+# name:str    type:str    value:int
+```
+and like values default to string if not typed.
 
 A table is scoped to the category in which its header is defined. The table remains active while parsing that category and any of its subcategories, and ends when that category is closed or when non-table data is encountered.
 
@@ -203,7 +205,7 @@ Or more formally, a table remains active until one of the following occurs:
 
 Example:
 ```
-# name    type    value
+# name    type    value:int
   sword   steel   12
   axe     iron    9
 ```
