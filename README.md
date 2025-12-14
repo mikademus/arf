@@ -193,15 +193,16 @@ Headers can be type annotated,
 ```
 # name:str    type:str    value:int
 ```
-and like values default to string if not typed.
+and--just like values--default to string if not typed.
 
-A table is scoped to the category in which its header is defined. The table remains active while parsing that category and any of its subcategories, and ends when that category is closed or when non-table data is encountered.
+A table is scoped to the category in which its header is defined (the **owning category**). The table remains active while parsing that category and any of its subcategories, and ends when that category is closed or when non-table data is encountered.
 
 Or more formally, a table remains active until one of the following occurs:
 * a key–value pair is encountered within the table’s owning category or its subcategories,
 * a new table header is defined,
 * the category in which the table was defined is closed,
-* or a new top-level category begins.
+* a new top-level category begins.
+* or EOF
 
 Example:
 ```
@@ -214,7 +215,7 @@ Example:
 Arf supports subdividing tables without restarting the header.
 ```
 items:
-#   name   type   value
+#   name      type      value
 :weapons
     sword     steel     12
     axe       iron      9
@@ -229,9 +230,10 @@ Characteristics:
 * subcategories do not restart the table
 * header applies across all subcategories
 * each category is closed explicitly
-* closing a subcategory containing a table also closes the table
+* closing a subcategory containing a table (the *owning category*) also closes the table
+* closing a subcategory started inside the table returns to and continues the previous category in the nesting hierarchy. 
 
-Example of a table wrapped in a category:
+Example of a table wrapped in an owning category:
 ```
 :header
     # a   b
@@ -240,7 +242,9 @@ Example of a table wrapped in a category:
 ```
 Closing header closes the table within it.
 
-Closing a subcategory returns to and continues the previous category in the nesting hierarchy. 
+
+> [!NOTE]
+> Closing the table’s owning category ends the table; closing a participating subcategory resumes the parent scope.
 
 ## Practical Demonstration
 A larger example showing structure, nested categories, tables, and explicit closure:
@@ -292,19 +296,19 @@ world:
 
 Arf! is easier to read and write, supports comments and tables.
 
-#### YAML
+### YAML
 * **Pros**: expressive
 * **Cons**: indentation traps, surprising coercions, many foot-guns
 
 Arf! avoids indentation entirely and keeps rules deterministic.
 
-#### TOML
+### TOML
 * **Pros**: predictable, well structured
 * **Cons**: verbose, no table subcategories
 
 Arf! supports structured tables and hierarchical organisation.
 
-#### TOOL
+### TOOL
 * **Pros**: clean tables
 * **Cons**: linear, no hierarchy
 
