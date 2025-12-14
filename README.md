@@ -1,7 +1,7 @@
 # Arf! — A Readable Format
 
-| **A tiny, human-centred data language for hierarchical configs and tables** |
-|-----------------------------------------------------------------------------|
+| **A tiny, human-centred data language for hierarchical configs and tables; Readable by humans, trivial to parse by machines** |
+|-------------------------------------------------------------------------------------------------------------------------------|
 
 Arf! (“A Readable Format”, also the bark of an enthusiastic small dog) is a compact, predictable, deterministic and explicitly scoped data language built for human readability without giving up structure. It mixes hierarchical categories, key/value pairs, and TOOL-style tables (column-aligned, whitespace-delimited) that can be subdivided into named subsections.
 
@@ -79,10 +79,32 @@ Outside tables whitespace is purely cosmetic for the benefit of human readers. W
 ```
 key = value
 ```
-String values
+#### String values
+String values are raw text extending from the first ```=``` to ```end-of-line```.
+Leading whitespace is trimmed; trailing whitespace is not semantically significant.
+All characters other than EOL are permitted within a value.
 * Strings may contain spaces, and multiple consecutive spaces are allowed.
 * Strings are not delimited by quotation marks and end at EOL.
 * There is no support for multi-line strings
+
+Strings and escaping:
+> [!NOTE]
+> Arf! treats string values as raw text.
+> No escape sequences are recognised or interpreted by the language.
+> Backslashes, quotes, and other characters have no special meaning.
+> Clients may impose their own conventions for interpreting string contents.
+
+Preserving leading and trailing whitespace:
+> [!NOTE]
+> Users may enclose values in custom delimiters (such as quotes or brackets) to preserve leading or trailing whitespace or to encode structured content.
+> Stripping or interpreting such delimiters is the responsibility of the client.
+
+All valid:
+```
+path = C:\Games\Foo\bar\n
+text = "   padded string   "
+regex = ^\w+\s+\w+$
+``` 
 
 ### Type annotation:
 Keys may be optionally specified with a type. Untyped values default to strings when queried. The type follows the name separated by a colon:
@@ -146,7 +168,7 @@ Subcategories can be nested:
 ```
 :settings
   :graphics
-  /grapics
+  /graphics
 
   :video
   /video
@@ -322,3 +344,23 @@ Arf! brings TOOL’s tabular clarity into a hierarchical world.
 * Readable by humans, trivial to parse by machines
 * Zero indentation rules
 * Flexible enough for configs, data definitions, content files, prototypes, world descriptions, resource manifests, etc.
+
+# Non-goals
+* No built-in string escaping or interpolation
+  * Arf! does not interpret escape sequences or quoted strings.
+* No semantic meaning assigned to delimiters
+  * Quotes and other characters are treated as ordinary text.
+* No whitespace-significant strings
+  * Leading whitespace may be trimmed; trailing whitespace is not guaranteed to be preserved.
+* No multi-line strings
+  * Files remain line-oriented and diff-friendly.
+* No implicit typing or coercion
+  * Types are explicit or resolved at query time.
+* No indentation-based semantics
+  * Whitespace is decorative only.
+* No schema or validation layer
+  * Arf! describes data; correctness is client responsibility.
+* No magical inference from empty lines
+  * Parsing is driven by syntax, not layout.
+* No support for preserving trailing whitespace
+  * Invisible state is hostile to humans.
