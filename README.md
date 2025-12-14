@@ -1,5 +1,7 @@
 # Arf! — A Readable Format
 
+![mascot](arf_mascot.png)
+
 | **A tiny, human-centred data language for hierarchical configs and tables; Readable by humans, trivial to parse by machines** |
 |-------------------------------------------------------------------------------------------------------------------------------|
 
