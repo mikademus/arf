@@ -3,7 +3,7 @@
 | **A tiny, human-centred data language for hierarchical configs and tables;<br> Readable by humans, trivial to parse by machines** | ![mascot](arf_mascot_small.png) |
 |-------------------------------------------------------------------------------------------------------------------------------|---------------------------------------|
 
-Arf! (“A Readable Format”, also the bark of an enthusiastic small dog) is a compact, predictable, deterministic and explicitly scoped data language built for human readability without giving up structure. It mixes hierarchical categories, key/value pairs, and TOOL-style tables (column-aligned, whitespace-delimited) that can be subdivided into named subsections.
+Arf! (“A Readable Format”, also the bark of an enthusiastic small dog) is a compact, predictable, deterministic and explicitly scoped data language built for human readability without giving up structure. It mixes hierarchical categories, key/value pairs, and TOON-style tables[^1] (column-aligned, whitespace-delimited) that can be subdivided into named subsections.
 
 The goals are simple:
 
@@ -13,27 +13,30 @@ The goals are simple:
   * Easier to write and read than JSON
   * Less fragile and surprising than YAML
   * More flexible than TOML
-  * Much more expressive than plain TOOL tables
+  * Much more expressive than plain TOON tables
+
+[^1]: [The TOON format](https://github.com/toon-format/toon).
 
 ## Overview
 
-| Feature	                | JSON	 | YAML	 | TOML	 | TOOL  | Arf!  | Notes |
+### Comparison at a Glance
+| Feature	                | JSON	 | YAML	 | TOML	 | TOON  | Arf!  | Notes |
 | :---                    | ---   | ---   | ---   | ---   | ---   | --- |
-| Comments	               | ❌	   | ✅	   | ✅	   | ⚠️    | ✅    | TOOL: By convention, not by specification  |
+| Comments	               | ❌	   | ✅	   | ✅	   | ⚠️    | ✅    | TOON: By convention, not by specification  |
 | Key/values	             | ✅	   | ✅	   | ✅	   | ❌    | ✅    |     |
 | Native Tables	          | ❌	   | ❌	   | ❌	   | ✅    | ✅    |     |
 | No-Quote Strings	       | ❌	   | ✅	   | ❌	   | ✅    | ✅    |     |
-| Type Annotations	       | ❌	   | ❌	   | ❌	   | ⚠️    | ✅    | TOOL types are advisory and not enforced |
+| Type Annotations	       | ❌	   | ❌	   | ❌	   | ⚠️    | ✅    | TOON types are advisory and not enforced |
 | Indentation-Independent	| ✅	   | ❌	   | ✅	   | ✅    | ✅    |     |
 | Deterministic Parsing	  | ✅	   | ❌	   | ✅	   | ✅    | ✅    |     |
 | Human readable          | C | A | A | A | S | Arf!: Fully human-centric |
-| Human editable          | D | B | A | B | S | Arf!: Fully human-centric |
+| Human editable          | D | B | A | B | S | Arf!: Minimal syntax friction |
 
 Arf! provides:
 
 * Hierarchical categories using a minimal marker syntax rather than indentation
 * Key/value bindings with optional type annotation
-* Tables with TOOL-like clarity
+* Tables with TOON-like clarity
 * Table subcategories that do not restart headers
 * Explicit category closing for precision and control
 * Whitespace freedom outside tables
@@ -73,13 +76,13 @@ This example is intentionally verbose, using explicit named closures inside a ta
 * JSON is rigid and noisy.
 * YAML is permissive to the point of being a riddle.
 * TOML is reliable but structurally repetitive.
-* TOOL tables are lovely but limited.
+* TOON tables are lovely but limited.
 
 Arf! attempts to unify the strengths of each:
 * JSON’s predictability
 * YAML’s readability
 * TOML’s clarity
-* TOOL’s table ergonomics
+* TOON’s table ergonomics
 …while discarding their pain points.
 
 # Syntax Overview
@@ -332,7 +335,7 @@ world:
 | JSON | ubiquitous, strict | noisy, no comments, no tables | Arf! is easier to read and write, supports comments and tables. |
 | YAML | expressive | indentation traps, surprising coercions, many foot-guns | Arf! avoids indentation entirely and keeps rules deterministic. |
 | TOML | predictable, well structured | verbose, no table subcategories | Arf! supports structured tables and hierarchical organisation. |
-| TOOL | clean tables | linear, no hierarchy | Arf! brings TOOL’s tabular clarity into a hierarchical world. |
+| TOON | clean tables | linear, no hierarchy | Arf! brings TOON’s tabular clarity into a hierarchical world. |
 
 ## Why Choose Arf!
 * Straightforward hierarchical structure
