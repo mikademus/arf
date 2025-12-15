@@ -44,3 +44,47 @@ Accessor functions all take the document and a path as arguments and returns a s
 If the value at the path is of the requested type it is returned as such, otherwise a conversion is attempted. Failures result in ```std::nullopt```.
 
 ## Querying tabular data
+
+Given the table
+```
+monsters:
+    # id:int  name:str         count:int
+      1       bat              13
+      2       rat              42      
+  :goblins
+      3       green goblin     123
+      4       red goblin       456
+  /goblins  
+  :undead
+      5       skeleton         314
+      6       zombie           999
+  /undead
+      7       kobold           3
+      8       orc              10
+/monsters
+```
+table columns are enumerated as
+```
+auto & monsters = doc.categories["monsters"];
+
+for (auto const & [col_name, col_type] : monsters->table_columns)
+    std::cout << std::format("{}: {}\n", col_name, arf::detail::type_to_string(col_type));
+```
+and table rows are enumerated as
+```
+auto & monsters = doc.categories["monsters"];
+
+// Base rows
+for (auto & row : monsters->table_rows) { ... }
+
+// Subcategory rows
+for (auto & [name, subcat] : monsters->subcategories)
+    for (auto & subrow : subcat->table_rows) { ... }
+```
+The values are obtained through ```std::get<T>(cell)```
+```
+auto id = std::get<std::string>(row[0]);
+auto name = std::get<std::string>(row[1]);
+auto count = std::get<int64_t>(row[2]);
+```
+Note that sub-rows (table rows under table subcategories) are not enumerated of part of the higher-category and must be manually collected from the subcategory.
