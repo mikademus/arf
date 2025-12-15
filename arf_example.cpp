@@ -353,7 +353,7 @@ data:
         std::cout << "✓ String value:\n";
         std::cout << "    is_scalar: " << (str_ref->is_scalar() ? "yes" : "no") << "\n";
         std::cout << "    is_string: " << (str_ref->is_string() ? "yes" : "no") << "\n";
-        std::cout << "    value: " << str_ref->as_string() << "\n\n";
+        std::cout << "    value: " << *str_ref->as_string() << "\n\n";
     }
     
     // Test int value
@@ -363,7 +363,7 @@ data:
         std::cout << "✓ Int value:\n";
         std::cout << "    is_scalar: " << (int_ref->is_scalar() ? "yes" : "no") << "\n";
         std::cout << "    is_int: " << (int_ref->is_int() ? "yes" : "no") << "\n";
-        std::cout << "    value: " << int_ref->as_int() << "\n\n";
+        std::cout << "    value: " << *int_ref->as_int() << "\n\n";
     }
     
     // Test float value
@@ -373,7 +373,7 @@ data:
         std::cout << "✓ Float value:\n";
         std::cout << "    is_scalar: " << (float_ref->is_scalar() ? "yes" : "no") << "\n";
         std::cout << "    is_float: " << (float_ref->is_float() ? "yes" : "no") << "\n";
-        std::cout << "    value: " << float_ref->as_float() << "\n\n";
+        std::cout << "    value: " << *float_ref->as_float() << "\n\n";
     }
     
     // Test bool value
@@ -383,7 +383,7 @@ data:
         std::cout << "✓ Bool value:\n";
         std::cout << "    is_scalar: " << (bool_ref->is_scalar() ? "yes" : "no") << "\n";
         std::cout << "    is_bool: " << (bool_ref->is_bool() ? "yes" : "no") << "\n";
-        std::cout << "    value: " << (bool_ref->as_bool() ? "true" : "false") << "\n\n";
+        std::cout << "    value: " << (*bool_ref->as_bool() ? "true" : "false") << "\n\n";
     }
     
     // Test array value
@@ -395,7 +395,7 @@ data:
         std::cout << "    is_array: " << (array_ref->is_array() ? "yes" : "no") << "\n";
         std::cout << "    is_string_array: " << (array_ref->is_string_array() ? "yes" : "no") << "\n";
         
-        auto arr = array_ref->as_array<std::string>();
+        auto arr = *array_ref->as_array<std::string>();
         std::cout << "    values: ";
         for (size_t i = 0; i < arr.size(); ++i)
         {
@@ -407,13 +407,10 @@ data:
     
     // Test error handling
     std::cout << "\n✓ Error handling:\n";
-    try {
-        if (str_ref)
-            str_ref->as_int(); // Should throw
-        std::cout << "    ✗ Should have thrown exception\n";
-    } catch (const std::runtime_error& e) {
-        std::cout << "    ✓ Caught expected exception: " << e.what() << "\n";
-    }
+    if (str_ref && str_ref->as_int() == std::nullopt) // Should throw
+        std::cout << "    ✓ Correctly failed conversion to int\n";
+    else
+        std::cout << "    ✗ Should have failed conversion\n";
 }
 
 void test_hierarchical_tables()
@@ -586,12 +583,11 @@ types:
 int main()
 {
     std::cout << R"(
-    ___         __ _ 
-   /   |  _____/ _| |
-  / /| | / __/ |_| |
- / ___ ||  _|  _|_|
-/_/   |_|_| |_| (_) 
-                    
+    _        __ _  
+   /_\  _ _ / _| | 
+  / _ \| '_|  _|_| 
+ /_/ \_\_| |_| (_) 
+                                       
 A Readable Format - Example & Test Suite
 Version 0.2.0
 )" << std::endl;

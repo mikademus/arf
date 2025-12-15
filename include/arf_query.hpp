@@ -5,6 +5,7 @@
 #define ARF_QUERY_HPP
 
 #include "arf_core.hpp"
+#include <span>
 
 namespace arf 
 {
@@ -41,43 +42,43 @@ namespace arf
         bool is_int_array() const { return std::holds_alternative<std::vector<int64_t>>(*val_); }
         bool is_float_array() const { return std::holds_alternative<std::vector<double>>(*val_); }
         
-        std::string as_string() const 
+        std::optional<std::string> as_string() const 
         {
             if (auto* s = std::get_if<std::string>(val_))
                 return *s;
-            throw std::runtime_error("Value is not a string");
+            return std::nullopt;
         }
         
-        int64_t as_int() const 
+        std::optional<int64_t> as_int() const 
         {
             if (auto* i = std::get_if<int64_t>(val_))
                 return *i;
-            throw std::runtime_error("Value is not an int");
+            return std::nullopt;
         }
         
-        double as_float() const 
+        std::optional<double> as_float() const 
         {
             if (auto* d = std::get_if<double>(val_))
                 return *d;
-            throw std::runtime_error("Value is not a float");
+            return std::nullopt;
         }
         
-        bool as_bool() const 
+        std::optional<bool> as_bool() const 
         {
             if (auto* b = std::get_if<bool>(val_))
                 return *b;
-            throw std::runtime_error("Value is not a bool");
+            return std::nullopt;
         }
         
         template<typename T>
-        std::vector<T> as_array() const 
+        std::optional<std::span<const T>> as_array() const 
         {
             if (auto* arr = std::get_if<std::vector<T>>(val_))
                 return *arr;
-            throw std::runtime_error("Value is not an array of the requested type");
+            return std::nullopt;
         }
         
-        const value& raw() const { return *val_; }
+        const value & raw() const { return *val_; }
         
     private:
         const value* val_;
