@@ -1,8 +1,8 @@
 # Querying data in an Arf! document
 
-```include "arf_parser.hpp"```
-
 ## Parsing an Arf! document
+
+```include "arf_parser.hpp"```
 
 ```arf::parse``` operates on string data and returns the document tree:
 ```
@@ -28,6 +28,8 @@ Basic data (key/value pairs) are accessed through string paths.
 Arrays and tables are accessed through structured APIs and are not addressable via string paths.
 
 ## Querying key\value data
+
+```include "arf_query.hpp"```
 
 Key/value data queries are **path-centric** and accessed by dot-separated path, where the last segment is the key (the name of the value). If the path resolves to a category, table, or anything non-scalar, the query returns std::nullopt without error.
 
