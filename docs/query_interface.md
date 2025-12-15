@@ -29,8 +29,8 @@ bar:
 // baz is located under the category bar:
     baz = 42
 ```
-* The access path to foo is: ```foo```.
-* The path to baz is: ```bar.baz```.
+* The path to foo is: ```foo```
+* The path to baz is: ```bar.baz```
 
 Accessor functions all take the document and a path as arguments and returns a std::optional<T>:
 ```
