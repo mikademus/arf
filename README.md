@@ -314,30 +314,13 @@ world:
 ```
 
 # The Case for Arf!
-## How Arf! Compares
-### JSON
-* **Pros**: ubiquitous, strict
-* **Cons**: noisy, no comments, no tables
 
-Arf! is easier to read and write, supports comments and tables.
-
-### YAML
-* **Pros**: expressive
-* **Cons**: indentation traps, surprising coercions, many foot-guns
-
-Arf! avoids indentation entirely and keeps rules deterministic.
-
-### TOML
-* **Pros**: predictable, well structured
-* **Cons**: verbose, no table subcategories
-
-Arf! supports structured tables and hierarchical organisation.
-
-### TOOL
-* **Pros**: clean tables
-* **Cons**: linear, no hierarchy
-
-Arf! brings TOOL’s tabular clarity into a hierarchical world.
+|   | Pros  | Cons  | Arf! advantages   |
+| :--- | :--- | :--- | :--- |
+| JSON | ubiquitous, strict | noisy, no comments, no tables | Arf! is easier to read and write, supports comments and tables. |
+| YAML | expressive | indentation traps, surprising coercions, many foot-guns | Arf! avoids indentation entirely and keeps rules deterministic. |
+| TOML | predictable, well structured | verbose, no table subcategories | Arf! supports structured tables and hierarchical organisation. |
+| TOOL | clean tables | linear, no hierarchy | Arf! brings TOOL’s tabular clarity into a hierarchical world. |
 
 ## Why Choose Arf!
 * Straightforward hierarchical structure
