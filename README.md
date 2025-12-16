@@ -152,6 +152,7 @@ greeting:str[] = hello|world
 Supported data types are:
 * Basic types:
   * str
+  * int
   * float
   * bool
   * date (ISO 8601, "YYYY-MM-DD")
