@@ -320,6 +320,22 @@ namespace arf
 
             return current;
         }
+
+        inline const value* find_value_ptr(const document& doc, const std::string& path)
+        {
+            auto parts = split_path(path);
+            if (parts.empty()) return nullptr;
+
+            const category* cat =
+                resolve_category(doc, parts, path_resolution::key_owner);
+            if (!cat) return nullptr;
+
+            auto it = cat->key_values.find(parts.back());
+            if (it == cat->key_values.end())
+                return nullptr;
+
+            return &it->second;
+        }
     } // namespace detail
 
     //========================================================================
@@ -347,10 +363,6 @@ namespace arf
         std::string lower = detail::to_lower(name);
         auto it = cat_->subcategories.find(lower);
         if (it == cat_->subcategories.end()) return std::nullopt;
-        
-        // Only return table_view if subcategory has table columns
-        if (it->second->table_columns.empty()) return std::nullopt;
-        
         return table_view(it->second.get());
     }
     
@@ -524,37 +536,16 @@ namespace arf
 
     inline std::optional<value_ref> get(const document& doc, const std::string& path)
     {
-        auto val = get_value(doc, path);
-        if (!val) return std::nullopt;
-        
-        auto parts = detail::split_path(path);
-        if (parts.empty()) return std::nullopt;
-        
-        const category* cat = detail::resolve_category(doc, parts, detail::path_resolution::key_owner);
-
-        if (!cat) return std::nullopt;
-        
-        const std::string& key = parts.back();
-        auto it = cat->key_values.find(key);
-        if (it == cat->key_values.end()) return std::nullopt;
-        
-        return value_ref(it->second);
+        if (const value* v = detail::find_value_ptr(doc, path))
+            return value_ref(*v);
+        return std::nullopt;
     }
 
     inline std::optional<value> get_value(const document& doc, const std::string& path)
     {
-        auto parts = detail::split_path(path);
-        if (parts.empty()) return std::nullopt;
-        
-        const category* cat = detail::resolve_category(doc, parts, detail::path_resolution::key_owner);
-
-        if (!cat) return std::nullopt;
-        
-        const std::string& key = parts.back();
-        auto it = cat->key_values.find(key);
-        if (it == cat->key_values.end()) return std::nullopt;
-        
-        return it->second;
+        if (const value* v = detail::find_value_ptr(doc, path))
+            return *v;
+        return std::nullopt;
     }
 
     inline std::optional<std::string> get_string(const document& doc, const std::string& path)
@@ -634,12 +625,8 @@ namespace arf
     template<typename T>
     inline std::optional<std::span<const T>> get_array(const document& doc, const std::string& path)
     {
-        auto ref = get(doc, path);          // ← value_ref, stable
-        if (!ref) return std::nullopt;
-
-        if (auto arr = ref->as_array<T>())
-            return std::span<const T>(*arr);
-
+        if (auto ref = get(doc, path))
+            return ref->as_array<T>();
         return std::nullopt;
     }
     
@@ -659,10 +646,25 @@ namespace arf
     
     inline std::string category_path(const category* cat, const document& doc)
     {
-        // This is a simplified implementation
-        // A full implementation would need to walk the document tree
-        // For now, just return the category name
-        return cat ? cat->name : "";
+        if (!cat) return "";
+
+        std::vector<std::string> parts;
+        while (cat)
+        {
+            parts.push_back(cat->name);
+            cat = cat->parent;
+        }
+
+        std::reverse(parts.begin(), parts.end());
+
+        std::string path;
+        for (size_t i = 0; i < parts.size(); ++i)
+        {
+            if (i) path += '.';
+            path += parts[i];
+        }
+
+        return path;        
     }
     
     inline std::string to_path(const row_view& row, const document& doc)

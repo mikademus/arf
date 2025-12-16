@@ -160,6 +160,7 @@ namespace arf
                 
                 auto cat = std::make_unique<category>();
                 cat->name = name;
+                cat->parent = doc_.categories[std::string(ROOT_CATEGORY_NAME)].get();
                 category* ptr = cat.get();
                 doc_.categories[name] = std::move(cat);
                 category_stack_.push_back(ptr);
@@ -178,7 +179,8 @@ namespace arf
                 category* parent = category_stack_.back();
                 auto subcat = std::make_unique<category>();
                 subcat->name = name;
-                                
+                subcat->parent = parent;
+
                 category* ptr = subcat.get();
                 parent->subcategories[name] = std::move(subcat);
                 category_stack_.push_back(ptr);

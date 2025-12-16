@@ -64,6 +64,7 @@ namespace arf
     struct category 
     {
         std::string name;
+        category * parent {nullptr};
         std::map<std::string, value> key_values;
         std::vector<column> table_columns;
         std::vector<table_row> table_rows;
