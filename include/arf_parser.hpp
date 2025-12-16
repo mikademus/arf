@@ -183,6 +183,7 @@ namespace arf
 
                 category* ptr = subcat.get();
                 parent->subcategories[name] = std::move(subcat);
+                parent->source_order.push_back({decl_kind::subcategory, name});
                 category_stack_.push_back(ptr);
                 
                 // When entering a subcategory, we stay in table mode IF the parent was in table mode
@@ -254,30 +255,33 @@ namespace arf
                 current_table_.clear();
                 std::string_view header = trim_sv(line.substr(1));
                 
-                std::istringstream stream{std::string(header)};
-                std::string token;
-                while (stream >> token) 
+                auto cells = split_table_cells(header);
+                for (auto& token : cells)
                 {
                     column col;
-                    size_t colon_pos = token.find(':');
-                    if (colon_pos != std::string::npos) 
+                    auto colon_pos = token.find(':');
+                    if (colon_pos != std::string::npos)
                     {
                         col.name = to_lower(token.substr(0, colon_pos));
                         col.type = parse_type(token.substr(colon_pos + 1));
-                    } 
-                    else 
+                    }
+                    else
                     {
                         col.name = to_lower(token);
                         col.type = value_type::string;
                     }
                     current_table_.push_back(col);
                 }
+
                 
                 in_table_mode_ = true;
                 table_mode_depth_ = category_stack_.size();
                 
-                if (!category_stack_.empty()) 
+                if (!category_stack_.empty())
+                {
                     category_stack_.back()->table_columns = current_table_;
+                    category_stack_.back()->source_order.push_back({ decl_kind::table, {} });
+                }
             }
             
             value_type parse_type(const std::string& type_str) 
@@ -330,7 +334,10 @@ namespace arf
                 {
                     auto val = parse_value(std::string(val_str), type);
                     if (val.has_value())
+                    {
                         category_stack_.back()->key_values[key] = std::move(*val);
+                        category_stack_.back()->source_order.push_back({decl_kind::key, key});                        
+                    }
                     else
                         add_error("Failed to parse value for key: " + key);
                 }

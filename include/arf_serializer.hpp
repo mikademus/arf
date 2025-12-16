@@ -69,60 +69,78 @@ namespace arf
                 // Close category
                 out << "/" << cat.name << "\n";
             }
-            
-            void serialize_category_content(std::ostringstream& out, const category& cat, int depth, bool is_root)
+
+            void serialize_category_content(
+                std::ostringstream& out,
+                const category& cat,
+                int depth,
+                bool is_root
+            )
             {
-                std::string indent(depth * 2, ' ');
-                
-                // Key-values
-                if (!cat.key_values.empty())
+                for (const auto& decl : cat.source_order)
                 {
-                    for (const auto& [key, val] : cat.key_values)
+                    switch (decl.kind)
                     {
-                        out << indent << (is_root ? "" : "  ") << key << " = ";
-                        serialize_value(out, val);
-                        out << "\n";
+                        case decl_kind::key:
+                            serialize_key(out, cat, decl.name, depth, is_root);
+                            break;
+
+                        case decl_kind::table:
+                            serialize_table(out, cat, depth + (is_root ? 0 : 1));
+                            break;
+
+                        case decl_kind::subcategory:
+                            serialize_subcategory(out, cat, decl.name, depth, is_root);
+                            break;
                     }
-                }
-                
-                // Table
-                if (!cat.table_columns.empty())
-                {
-                    if (!cat.key_values.empty())
-                        out << "\n";
-                    serialize_table(out, cat, depth + (is_root ? 0 : 1));
-                }
-                
-                // Subcategories
-                for (const auto& [name, subcat] : cat.subcategories)
-                {
-                    out << "\n" << indent << (is_root ? "" : "  ") << ":" << name << "\n";
-                    
-                    // If subcategory has same table structure, just serialize rows
-                    if (subcat->table_columns == cat.table_columns && !subcat->table_rows.empty())
-                    {
-                        serialize_table_rows(out, *subcat, depth + (is_root ? 0 : 1));
-                    }
-                    else
-                    {
-                        // Different structure
-                        if (!subcat->table_columns.empty())
-                            serialize_table(out, *subcat, depth + (is_root ? 1 : 2));
-                        
-                        for (const auto& [key, val] : subcat->key_values)
-                        {
-                            out << indent << (is_root ? "  " : "    ") << key << " = ";
-                            serialize_value(out, val);
-                            out << "\n";
-                        }
-                    }
-                    
-                    out << indent << (is_root ? "" : "  ") << "/" << name << "\n";
                 }
             }
-            
+
+            void serialize_key(
+                std::ostringstream& out,
+                const category& cat,
+                const std::string& key,
+                int depth,
+                bool is_root
+            )
+            {
+                auto it = cat.key_values.find(key);
+                if (it == cat.key_values.end())
+                    return; // defensive
+
+                std::string indent(depth * 2, ' ');
+                out << indent << (is_root ? "" : "  ") << key << " = ";
+                serialize_value(out, it->second);
+                out << "\n";
+            }
+
+            void serialize_subcategory(
+                std::ostringstream& out,
+                const category& cat,
+                const std::string& name,
+                int depth,
+                bool is_root
+            )
+            {
+                auto it = cat.subcategories.find(name);
+                if (it == cat.subcategories.end())
+                    return;
+
+                const category& sub = *it->second;
+
+                std::string indent(depth * 2, ' ');
+                out << "\n" << indent << (is_root ? "" : "  ") << ":" << name << "\n";
+
+                serialize_category_content(out, sub, depth + 1, false);
+
+                out << indent << (is_root ? "" : "  ") << "/" << name << "\n";
+            }
+
             void serialize_table(std::ostringstream& out, const category& cat, int depth)
             {
+                if (cat.table_columns.empty())
+                    return; // malformed AST, or future extension
+
                 std::string indent(depth * 2, ' ');
                 
                 std::vector<size_t> col_widths;
@@ -133,7 +151,7 @@ namespace arf
                 out << indent << "#";
                 for (size_t i = 0; i < cat.table_columns.size(); ++i)
                 {
-                    out << " " << cat.table_columns[i].name << ":" << type_to_string(cat.table_columns[i].type);
+                    out << "  " << cat.table_columns[i].name << ":" << type_to_string(cat.table_columns[i].type);
                 }
                 out << "\n";
                 

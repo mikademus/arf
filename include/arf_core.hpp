@@ -61,6 +61,19 @@ namespace arf
     
     using table_row = std::vector<value>;
     
+    enum class decl_kind
+    {
+        key,
+        table,
+        subcategory
+    };
+
+    struct decl_ref
+    {
+        decl_kind kind;
+        std::string name; // empty for table
+    };
+
     struct category 
     {
         std::string name;
@@ -69,6 +82,7 @@ namespace arf
         std::vector<column> table_columns;
         std::vector<table_row> table_rows;
         std::map<std::string, std::unique_ptr<category>> subcategories;
+        std::vector<decl_ref> source_order;
     };
     
     struct document 
