@@ -252,6 +252,12 @@ namespace arf
     
     namespace detail 
     {
+        enum class path_resolution
+        {
+            key_owner,   // stop before last segment
+            category     // consume full path
+        };
+
         inline std::vector<std::string> split_path(const std::string& path)
         {
             std::vector<std::string> parts;
@@ -279,53 +285,41 @@ namespace arf
             return parts;
         }
         
-        inline const category* find_category(const document& doc, const std::vector<std::string>& path)
+
+        inline const category* resolve_category(
+            const document& doc,
+            const std::vector<std::string>& path,
+            path_resolution target
+        )
         {
             if (path.empty()) return nullptr;
-            
+
             auto it = doc.categories.find(path[0]);
-            if (it == doc.categories.end()) 
+            if (it == doc.categories.end())
             {
-                // Try root category
                 it = doc.categories.find(std::string(ROOT_CATEGORY_NAME));
-                if (it == doc.categories.end()) return nullptr;
+                if (it == doc.categories.end())
+                    return nullptr;
             }
+
             const category* current = it->second.get();
-            size_t start_idx = (path[0] == std::string(ROOT_CATEGORY_NAME)) ? 1 : 1;
-            
-            for (size_t i = start_idx; i < path.size() - 1; ++i)
+
+            const size_t limit =
+                (target == path_resolution::key_owner)
+                    ? path.size() - 1
+                    : path.size();
+
+            for (size_t i = 1; i < limit; ++i)
             {
-                auto sub_it = current->subcategories.find(path[i]);
-                if (sub_it == current->subcategories.end()) return nullptr;
-                current = sub_it->second.get();
+                auto sub = current->subcategories.find(path[i]);
+                if (sub == current->subcategories.end())
+                    return nullptr;
+
+                current = sub->second.get();
             }
 
             return current;
         }
-        
-        inline const category* find_category_final(const document& doc, const std::vector<std::string>& path)
-        {
-            if (path.empty()) return nullptr;
-            
-            auto it = doc.categories.find(path[0]);
-            if (it == doc.categories.end()) 
-            {
-                it = doc.categories.find(std::string(ROOT_CATEGORY_NAME));
-                if (it == doc.categories.end()) return nullptr;
-            }
-            const category* current = it->second.get();
-            
-            size_t start_idx = (path[0] == std::string(ROOT_CATEGORY_NAME)) ? 1 : 1;
-            for (size_t i = start_idx; i < path.size(); ++i)
-            {
-                auto sub_it = current->subcategories.find(path[i]);
-                if (sub_it == current->subcategories.end()) return nullptr;
-                current = sub_it->second.get();
-            }
-
-            return current;
-        }
-    
     } // namespace detail
 
     //========================================================================
@@ -536,7 +530,8 @@ namespace arf
         auto parts = detail::split_path(path);
         if (parts.empty()) return std::nullopt;
         
-        const category* cat = detail::find_category(doc, parts);
+        const category* cat = detail::resolve_category(doc, parts, detail::path_resolution::key_owner);
+
         if (!cat) return std::nullopt;
         
         const std::string& key = parts.back();
@@ -551,7 +546,8 @@ namespace arf
         auto parts = detail::split_path(path);
         if (parts.empty()) return std::nullopt;
         
-        const category* cat = detail::find_category(doc, parts);
+        const category* cat = detail::resolve_category(doc, parts, detail::path_resolution::key_owner);
+
         if (!cat) return std::nullopt;
         
         const std::string& key = parts.back();
@@ -652,7 +648,7 @@ namespace arf
         auto parts = detail::split_path(path);
         if (parts.empty()) return std::nullopt;
         
-        const category* cat = detail::find_category_final(doc, parts);
+        const category* cat = detail::resolve_category(doc, parts, detail::path_resolution::category);
         if (!cat) return std::nullopt;
         
         // Only return table_view if category has table columns defined
