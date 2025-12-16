@@ -6,6 +6,7 @@
 
 #include "arf_core.hpp"
 #include <iterator>
+#include <span>
 
 namespace arf 
 {
@@ -30,18 +31,14 @@ namespace arf
         const value& operator[](size_t index) const { return (*row_)[index]; }
         
         // Name-based value access
-        std::optional<value> get(const std::string& column_name) const;
-        
-        // Typed name-based access
+        const value* get_ptr(const std::string& column_name) const;
+
         template<typename T>
-        std::optional<T> get(const std::string& column_name) const 
+        const T* get_ptr(const std::string& column_name) const
         {
-            auto val = get(column_name);
-            if (!val) return std::nullopt;
-            
-            if (auto* typed = std::get_if<T>(&*val))
-                return *typed;
-            return std::nullopt;
+            if (auto v = get_ptr(column_name))
+                return std::get_if<T>(v);
+            return nullptr;
         }
         
         // Convenience typed getters
@@ -51,9 +48,9 @@ namespace arf
         std::optional<bool> get_bool(const std::string& col) const;
         
         // Array getters
-        std::optional<std::vector<std::string>> get_string_array(const std::string& col) const;
-        std::optional<std::vector<int64_t>> get_int_array(const std::string& col) const;
-        std::optional<std::vector<double>> get_float_array(const std::string& col) const;
+        std::optional<std::span<const std::string>> get_string_array(const std::string& col) const;
+        std::optional<std::span<const int64_t>> get_int_array(const std::string& col) const;
+        std::optional<std::span<const double>> get_float_array(const std::string& col) const;
         
         // Provenance information
         const category* source() const { return source_category_; }
@@ -209,15 +206,15 @@ namespace arf
                 return *b;
             return std::nullopt;
         }
-        
+                
         template<typename T>
-        std::optional<std::vector<T>> as_array() const 
+        std::optional<std::span<const T>> as_array() const
         {
             if (auto* arr = std::get_if<std::vector<T>>(val_))
-                return *arr;
+                return std::span<const T>(*arr);
             return std::nullopt;
         }
-        
+
         const value& raw() const { return *val_; }
         
     private:
@@ -240,7 +237,7 @@ namespace arf
     
     // Array access helpers
     template<typename T>
-    std::optional<std::vector<T>> get_array(const document& doc, const std::string& path);
+    std::optional<std::span<const T>> get_array(const document& doc, const std::string& path);
     
     // Table access
     std::optional<table_view> get_table(const document& doc, const std::string& path);
@@ -452,46 +449,74 @@ namespace arf
     // ROW VIEW IMPLEMENTATION
     //========================================================================
     
-    inline std::optional<value> row_view::get(const std::string& column_name) const 
+    inline const value* row_view::get_ptr(const std::string& column_name) const
     {
         auto idx = table_->column_index(column_name);
-        if (!idx || *idx >= row_->size()) return std::nullopt;
-        return (*row_)[*idx];
+        if (!idx || *idx >= row_->size())
+            return nullptr;
+
+        return &(*row_)[*idx];
     }
     
     inline std::optional<std::string> row_view::get_string(const std::string& col) const 
     {
-        return get<std::string>(col);
+        if (auto p = get_ptr<std::string>(col))
+            return *p;
+        return std::nullopt;
     }
     
-    inline std::optional<int64_t> row_view::get_int(const std::string& col) const 
+    inline std::optional<int64_t> row_view::get_int(const std::string& col) const
     {
-        return get<int64_t>(col);
-    }
+        if (auto p = get_ptr<int64_t>(col))
+            return *p;
+        return std::nullopt;
+    }    
     
     inline std::optional<double> row_view::get_float(const std::string& col) const 
     {
-        return get<double>(col);
+        if (auto p = get_ptr<double>(col))
+            return *p;
+        return std::nullopt;
     }
     
     inline std::optional<bool> row_view::get_bool(const std::string& col) const 
     {
-        return get<bool>(col);
+        if (auto p = get_ptr<bool>(col))
+            return *p;
+        return std::nullopt;
     }
     
-    inline std::optional<std::vector<std::string>> row_view::get_string_array(const std::string& col) const 
+    inline std::optional<std::span<const std::string>>
+    row_view::get_string_array(const std::string& col) const
     {
-        return get<std::vector<std::string>>(col);
+        if (auto* v = get_ptr(col))
+        {
+            if (auto* arr = std::get_if<std::vector<std::string>>(v))
+                return std::span<const std::string>(*arr);
+        }
+        return std::nullopt;
+    }
+
+    inline std::optional<std::span<const int64_t>> 
+    row_view::get_int_array(const std::string& col) const 
+    {
+        if (auto* v = get_ptr(col))
+        {
+            if (auto* arr = std::get_if<std::vector<int64_t>>(v))
+                return std::span<const int64_t>(*arr);
+        }
+        return std::nullopt;
     }
     
-    inline std::optional<std::vector<int64_t>> row_view::get_int_array(const std::string& col) const 
+    inline std::optional<std::span<const double>> 
+    row_view::get_float_array(const std::string& col) const 
     {
-        return get<std::vector<int64_t>>(col);
-    }
-    
-    inline std::optional<std::vector<double>> row_view::get_float_array(const std::string& col) const 
-    {
-        return get<std::vector<double>>(col);
+        if (auto* v = get_ptr(col))
+        {
+            if (auto* arr = std::get_if<std::vector<double>>(v))
+                return std::span<const double>(*arr);
+        }
+        return std::nullopt;
     }
     
     inline bool row_view::is_base_row() const 
@@ -611,14 +636,14 @@ namespace arf
     }
     
     template<typename T>
-    inline std::optional<std::vector<T>> get_array(const document& doc, const std::string& path)
+    inline std::optional<std::span<const T>> get_array(const document& doc, const std::string& path)
     {
-        auto val = get_value(doc, path);
-        if (!val) return std::nullopt;
-        
-        if (auto* arr = std::get_if<std::vector<T>>(&*val))
-            return *arr;
-        
+        auto ref = get(doc, path);          // ← value_ref, stable
+        if (!ref) return std::nullopt;
+
+        if (auto arr = ref->as_array<T>())
+            return std::span<const T>(*arr);
+
         return std::nullopt;
     }
     
