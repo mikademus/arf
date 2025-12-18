@@ -94,9 +94,9 @@ Each returns `std::optional<T>`.
 If the value exists but has a different type, a **safe conversion** is attempted.
 If conversion fails, `std::nullopt` is returned.
 
-Vector accessors returns `std::optional<std::span<const T>>`:
+Array accessors returns `std::optional<std::span<const T>>`:
 
-| Vector accessor           | span value type                |
+| Array accessor            | span value type                |
 | ------------------------- | ------------------------------ |
 | `arf::get_string_array`   | `std::span<const std::string>` |
 | `arf::get_int_array`      | `std::span<const int64_t>`     |
