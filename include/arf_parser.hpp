@@ -260,16 +260,20 @@ namespace arf
                 {
                     column col;
                     auto colon_pos = token.find(':');
+
                     if (colon_pos != std::string::npos)
                     {
                         col.name = to_lower(token.substr(0, colon_pos));
                         col.type = parse_type(token.substr(colon_pos + 1));
+                        col.type_source = type_ascription::declared;
                     }
                     else
                     {
                         col.name = to_lower(token);
                         col.type = value_type::string;
+                        col.type_source = type_ascription::tacit;
                     }
+
                     current_table_.push_back(col);
                 }
 
@@ -291,6 +295,7 @@ namespace arf
                 if (lower == "str[]") return value_type::string_array;
                 if (lower == "int[]") return value_type::int_array;
                 if (lower == "float[]") return value_type::float_array;
+                if (lower != "str") add_error("key has unknown type \"" + type_str + "\"");
                 return value_type::string;
             }
             
@@ -306,17 +311,19 @@ namespace arf
                 size_t colon_pos = key_part.find(':');
                 std::string key;
                 value_type type = value_type::string;
-                
+                type_ascription type_source = type_ascription::tacit;
+
                 if (colon_pos != std::string_view::npos) 
                 {
                     key = to_lower(std::string(trim_sv(key_part.substr(0, colon_pos))));
                     type = parse_type(std::string(trim_sv(key_part.substr(colon_pos + 1))));
+                    type_source = type_ascription::declared;
                 } 
                 else 
                 {
                     key = to_lower(std::string(key_part));
                 }
-                
+
                 // If we see a key-value pair, we're no longer in table mode
                 // This handles the case where a subcategory declares key-value pairs
                 // after participating in the table
@@ -332,8 +339,15 @@ namespace arf
                     auto val = parse_value(std::string(val_str), type);
                     if (val.has_value())
                     {
-                        category_stack_.back()->key_values[key] = std::move(*val);
-                        category_stack_.back()->source_order.push_back({decl_kind::key, key});                        
+                        typed_value tv;
+                        tv.val            = std::move(*val);
+                        tv.type           = type;
+                        tv.type_source    = type_source;
+                        tv.origin_site    = value_locus::key_value;
+                        tv.source_literal = std::string(val_str);
+
+                        category_stack_.back()->key_values[key] = std::move(tv);
+                        category_stack_.back()->source_order.push_back({decl_kind::key, key});
                     }
                     else
                         add_error("Failed to parse value for key: " + key);
@@ -362,19 +376,40 @@ namespace arf
                 }
                 
                 table_row row;
-                for (size_t i = 0; i < cells.size(); i++)
+                for (size_t i = 0; i < cells.size(); ++i)
                 {
-                    auto val = parse_value(cells[i], current_table_[i].type);
-                    if (val.has_value())
-                        row.push_back(std::move(*val));
+                    const column& col = current_table_[i];
+
+                    auto parsed = parse_value(cells[i], col.type);
+                    if (parsed.has_value())
+                    {
+                        typed_value tv;
+                        tv.val            = std::move(*parsed);
+                        tv.type           = col.type;
+                        tv.type_source    = col.type_source;
+                        tv.origin_site    = value_locus::table_cell;
+                        tv.source_literal = std::string(cells[i]);
+
+                        row.push_back(std::move(tv));
+                    }
                     else
                     {
-                        add_error("Failed to parse cell " + std::to_string(i) + " as " + 
-                                 type_to_string(current_table_[i].type));
-                        row.push_back(std::string{""}); // Use braced initialization
+                        add_error(
+                            "Failed to parse cell " + std::to_string(i) +
+                            " as " + type_to_string(col.type)
+                        );
+
+                        typed_value tv;
+                        tv.val            = std::string{};
+                        tv.type           = col.type;
+                        tv.type_source    = col.type_source;
+                        tv.origin_site    = value_locus::table_cell;
+                        tv.source_literal = std::string(cells[i]);
+
+                        row.push_back(std::move(tv));
                     }
                 }
-                
+                                
                 category* cat = category_stack_.back();
                 const size_t row_index = cat->table_rows.size();
 

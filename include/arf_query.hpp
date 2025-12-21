@@ -5,6 +5,7 @@
 #define ARF_QUERY_HPP
 
 #include "arf_core.hpp"
+
 #include <iterator>
 #include <span>
 #include <cassert>
@@ -12,15 +13,155 @@
 namespace arf 
 {
     //========================================================================
-    // FORWARD DECLARATIONS
+    // REFLECTION BASE
     //========================================================================
     
-    class table_view;
-    class row_view;
+    class value_ref 
+    {
+    public:
+        value_ref(const typed_value& v) : tv_(&v) {}
+
+    // --- provenance ---
+        value_type      type()          const { return tv_->type; }
+        bool            declared()      const { return tv_->type_source == type_ascription::declared; }
+        type_ascription type_source()   const { return tv_->type_source; }
+        value_locus     origin_site()   const { return tv_->origin_site; }
+
+    // --- raw access ---
+        const value& raw() const { return tv_->val; }
+
+        std::optional<std::string_view> source_str() const
+        {
+            if (!tv_->source_literal)
+                return std::nullopt;
+
+            return std::string_view(*tv_->source_literal);
+        }        
+        
+    // --- format ---        
+        bool is_scalar() const 
+        {
+            return std::holds_alternative<std::string>(tv_->val) ||
+                   std::holds_alternative<int64_t>(tv_->val) ||
+                   std::holds_alternative<double>(tv_->val) ||
+                   std::holds_alternative<bool>(tv_->val);
+        }
+        
+        bool is_array() const 
+        {
+            return std::holds_alternative<std::vector<std::string>>(tv_->val) ||
+                   std::holds_alternative<std::vector<int64_t>>(tv_->val) ||
+                   std::holds_alternative<std::vector<double>>(tv_->val);
+        }
+        
+        bool is_string() const { return std::holds_alternative<std::string>(tv_->val); }
+        bool is_int() const { return std::holds_alternative<int64_t>(tv_->val); }
+        bool is_float() const { return std::holds_alternative<double>(tv_->val); }
+        bool is_bool() const { return std::holds_alternative<bool>(tv_->val); }
+        
+        bool is_string_array() const { return std::holds_alternative<std::vector<std::string>>(tv_->val); }
+        bool is_int_array() const { return std::holds_alternative<std::vector<int64_t>>(tv_->val); }
+        bool is_float_array() const { return std::holds_alternative<std::vector<double>>(tv_->val); }
+        
+    // --- scalar access: allow conversions ---
+        std::optional<std::string> as_string() const
+        {
+            if (auto s = source_str())
+                return std::string(*s);
+
+            return to_string(tv_->val);
+        }
+        
+        std::optional<int64_t> as_int()   const { return to_int(tv_->val); }
+        std::optional<double>  as_float() const { return to_float(tv_->val); }
+        std::optional<bool>    as_bool()  const { return to_bool(tv_->val); }
+        
+    // --- array access: non-converting views ---
+        std::optional<std::span<const std::string>> string_array() const { return array_view<std::string>(); }
+        std::optional<std::span<const int64_t>>     int_array()    const { return array_view<int64_t>(); }
+        std::optional<std::span<const double>>      float_array()  const { return array_view<double>(); }
+
+
+    private:
+        const typed_value* tv_;
+
+        template<typename T>
+        std::optional<std::span<const T>> array_view() const
+        {
+            if (auto* arr = std::get_if<std::vector<T>>(&tv_->val))
+                return std::span<const T>(*arr);
+            return std::nullopt;
+        }
+
+        static std::optional<std::string> to_string(const value& v)
+        {
+            if (auto* str = std::get_if<std::string>(&v))
+                return *str;
+
+            if (auto* i = std::get_if<int64_t>(&v))
+                return std::to_string(*i);
+
+            if (auto* d = std::get_if<double>(&v))
+                return std::to_string(*d);
+
+            if (auto* b = std::get_if<bool>(&v))
+                return *b ? "true" : "false";
+
+            return std::nullopt;
+        }
+
+        static std::optional<int64_t> to_int(const value& v)
+        {
+            if (auto* i = std::get_if<int64_t>(&v))
+                return *i;
+
+            if (auto* d = std::get_if<double>(&v))
+                return static_cast<int64_t>(*d);
+
+            if (auto* s = std::get_if<std::string>(&v))
+            {
+                try { return std::stoll(*s); }
+                catch (...) {}
+            }
+            return std::nullopt;
+        }
+
+        static std::optional<double> to_float(const value& v)
+        {
+            if (auto* d = std::get_if<double>(&v))
+                return *d;
+
+            if (auto* i = std::get_if<int64_t>(&v))
+                return static_cast<double>(*i);
+
+            if (auto* s = std::get_if<std::string>(&v))
+            {
+                try { return std::stod(*s); }
+                catch (...) {}
+            }
+            return std::nullopt;
+        }
+
+        static std::optional<bool> to_bool(const value& v)
+        {
+            if (auto* b = std::get_if<bool>(&v))
+                return *b;
+
+            if (auto* s = std::get_if<std::string>(&v))
+            {
+                std::string lower = detail::to_lower(*s);
+                if (lower == "true" || lower == "yes" || lower == "1") return true;
+                if (lower == "false" || lower == "no" || lower == "0") return false;
+            }
+            return std::nullopt;
+        }        
+    };
     
     //========================================================================
     // TABLE ROW VIEW
     //========================================================================
+    
+    class table_view;
     
     class row_view 
     {
@@ -29,18 +170,14 @@ namespace arf
             : row_(row), table_(table), source_category_(source) {}
         
         // Index-based access
-        const value& operator[](size_t index) const { return (*row_)[index]; }
+        value_ref operator[](size_t index) const { return value_ref((*row_)[index]); }
         
         // Name-based value access
-        const value* get_ptr(const std::string& column_name) const;
+        const typed_value* get_typed_ptr(const std::string& name) const;
 
-        template<typename T>
-        const T* get_ptr(const std::string& column_name) const
-        {
-            if (auto v = get_ptr(column_name))
-                return std::get_if<T>(v);
-            return nullptr;
-        }
+        //const value* get_ptr(const std::string& column_name) const;
+
+        std::optional<value_ref> get(const std::string& name) const;
         
         // Convenience typed getters
         std::optional<std::string> get_string(const std::string& col) const;
@@ -62,6 +199,10 @@ namespace arf
         const table_row& raw() const { return *row_; }
         
     private:
+    
+        template<typename T>
+        const T* get_ptr(const std::string& column_name) const;
+
         const table_row* row_;
         const table_view* table_;
         const category* source_category_;
@@ -193,80 +334,143 @@ namespace arf
     };
     
     //========================================================================
-    // VALUE PROXY FOR REFLECTION
+    // REFLECTION CONT.
     //========================================================================
-    
-    class value_ref 
+
+    class column_ref
     {
     public:
-        value_ref(const value& v) : val_(&v) {}
-        
-        bool is_scalar() const 
+        column_ref(const column& col, size_t index)
+            : col_(&col), index_(index) {}
+
+        const std::string& name() const { return col_->name; }
+        size_t             index() const { return index_; }
+
+        value_type      type()        const { return col_->type; }
+        type_ascription type_source() const { return col_->type_source; }
+
+    private:
+        const column* col_;
+        size_t        index_;
+    };
+
+    class row_ref;
+    class table_ref;
+
+    class cell_ref
+    {
+    public:
+        cell_ref(const row_ref& row, const column_ref& col)
+            : row_(&row)
+            , col_(&col)
         {
-            return std::holds_alternative<std::string>(*val_) ||
-                   std::holds_alternative<int64_t>(*val_) ||
-                   std::holds_alternative<double>(*val_) ||
-                   std::holds_alternative<bool>(*val_);
-        }
-        
-        bool is_array() const 
-        {
-            return std::holds_alternative<std::vector<std::string>>(*val_) ||
-                   std::holds_alternative<std::vector<int64_t>>(*val_) ||
-                   std::holds_alternative<std::vector<double>>(*val_);
-        }
-        
-        bool is_string() const { return std::holds_alternative<std::string>(*val_); }
-        bool is_int() const { return std::holds_alternative<int64_t>(*val_); }
-        bool is_float() const { return std::holds_alternative<double>(*val_); }
-        bool is_bool() const { return std::holds_alternative<bool>(*val_); }
-        
-        bool is_string_array() const { return std::holds_alternative<std::vector<std::string>>(*val_); }
-        bool is_int_array() const { return std::holds_alternative<std::vector<int64_t>>(*val_); }
-        bool is_float_array() const { return std::holds_alternative<std::vector<double>>(*val_); }
-        
-        std::optional<std::string> as_string() const 
-        {
-            if (auto* s = std::get_if<std::string>(val_))
-                return *s;
-            return std::nullopt;
-        }
-        
-        std::optional<int64_t> as_int() const 
-        {
-            if (auto* i = std::get_if<int64_t>(val_))
-                return *i;
-            return std::nullopt;
-        }
-        
-        std::optional<double> as_float() const 
-        {
-            if (auto* d = std::get_if<double>(val_))
-                return *d;
-            return std::nullopt;
-        }
-        
-        std::optional<bool> as_bool() const 
-        {
-            if (auto* b = std::get_if<bool>(val_))
-                return *b;
-            return std::nullopt;
-        }
-                
-        template<typename T>
-        std::optional<std::span<const T>> as_array() const
-        {
-            if (auto* arr = std::get_if<std::vector<T>>(val_))
-                return std::span<const T>(*arr);
-            return std::nullopt;
         }
 
-        const value& raw() const { return *val_; }
-        
+        size_t row_index()    const; 
+        size_t column_index() const;
+
+        value_ref  value()  const;
+
+        const column_ref& column() const { return *col_; }
+        const row_ref&    row()    const { return *row_; }   
+             
     private:
-        const value* val_;
+        const row_ref* row_;
+        const column_ref* col_;
     };
-    
+
+    class subcategory_ref;
+
+    class row_ref
+    {
+    public:
+        row_ref(const table_ref& table, size_t row_index)
+            : table_(&table), row_index_(row_index) {}
+
+        // --- identity ---
+        size_t index() const { return row_index_; }
+        const table_ref& table() const { return *table_; }
+
+        // --- structure ---
+        subcategory_ref subcategory() const;
+
+        size_t cell_count() const;
+        auto cells() const;
+        cell_ref cell(const column_ref& col) const;
+
+        // --- compatibility layer ---
+        const typed_value* get_typed_ptr(const std::string& name) const;
+        const value*       get_ptr(const std::string& name) const;
+
+    private:
+        const table_ref* table_;
+        size_t           row_index_; // ALWAYS table-space index
+    };
+
+    class subcategory_ref
+    {
+    public:
+        subcategory_ref(const table_ref& table, size_t subcat_index);
+
+        const std::string& name() const;
+
+        // number of rows in this subcategory (all descendants included)
+        size_t row_count() const;
+
+        // global table row index
+        size_t rows_in_table(size_t i) const;
+
+        // index relative to parent subcategory
+        size_t rows_in_parent(size_t i) const;
+
+        // hierarchy
+        bool has_parent() const;
+        subcategory_ref parent() const;
+
+        size_t child_count() const;
+        subcategory_ref child(size_t i) const;
+
+        // iteration
+        auto rows() const;
+
+    private:
+        const table_ref* table_;
+        size_t           subcat_index_;
+    };  
+
+    class table_ref
+    {
+    public:
+        table_ref(const category& cat)
+            : category_(&cat) {}
+
+        const category& schema() const { return *category_; }
+                    
+        // columns
+        size_t      column_count() const;
+        column_ref  column(size_t i) const;
+        auto        columns() const;
+        //size_t      column_index(std::string_view name) const { return category_->column_index(name); }
+        
+        // rows (document order)
+        size_t      row_count() const { return category_->table_rows.size(); }
+        row_ref     row(size_t table_row_index) const { return row_ref(*this, table_row_index); }
+        auto        rows() const;
+
+        // subcategories
+        subcategory_ref root_subcategory() const;
+        size_t          subcategory_count() const;
+        subcategory_ref subcategory(size_t i) const;
+        auto            subcategories() const;
+
+        // resolves the active subcategory for a table row
+        // NOTE: parameter is ALWAYS a table row index
+        size_t resolve_subcategory_index(size_t table_row_index) const;
+
+    private:
+        const category* category_;
+    };
+
     //========================================================================
     // QUERY API
     //========================================================================
@@ -275,15 +479,15 @@ namespace arf
     std::optional<value_ref> get(const document& doc, const std::string& path);
     
     // Direct value access
-    std::optional<value> get_value(const document& doc, const std::string& path);
     std::optional<std::string> get_string(const document& doc, const std::string& path);
     std::optional<int64_t> get_int(const document& doc, const std::string& path);
     std::optional<double> get_float(const document& doc, const std::string& path);
     std::optional<bool> get_bool(const document& doc, const std::string& path);
-    
+
     // Array access helpers
-    template<typename T>
-    std::optional<std::span<const T>> get_array(const document& doc, const std::string& path);
+    std::optional<std::span<const std::string>> get_string_array(const document& doc, const std::string& path);        
+    std::optional<std::span<const int64_t>> get_int_array(const document& doc, const std::string& path);        
+    std::optional<std::span<const double>> get_float_array(const document& doc, const std::string& path);
     
     // Table access
     std::optional<table_view> get_table(const document& doc, const std::string& path);
@@ -367,7 +571,7 @@ namespace arf
             return current;
         }
 
-        inline const value* find_value_ptr(const document& doc, const std::string& path)
+        inline const typed_value* find_typed_value_ptr(const document& doc, const std::string& path)
         {
             auto parts = split_path(path);
             if (parts.empty()) return nullptr;
@@ -383,6 +587,79 @@ namespace arf
             return &it->second;
         }
     } // namespace detail
+
+    //========================================================================
+    // REFLECTION API IMPLEMENTATION
+    //========================================================================
+
+    size_t cell_ref::row_index() const 
+    { 
+        return row_->index(); 
+    }
+
+    size_t cell_ref::column_index() const
+    { 
+        return col_->index(); 
+    }
+
+
+    inline auto row_ref::cells() const
+    {
+        struct cell_range
+        {
+            const row_ref* row;
+            struct iterator
+            {
+                const row_ref* row;
+                size_t col;
+
+                cell_ref operator*() const
+                {
+                    auto cr = row->table().column(col);
+                    return row->cell(cr);
+                }
+
+                iterator& operator++()
+                {
+                    ++col;
+                    return *this;
+                }
+
+                bool operator!=(const iterator& other) const
+                {
+                    return col != other.col;
+                }
+            };
+
+            iterator begin() const { return { row, 0 }; }
+            iterator end()   const { return { row, row->cell_count() }; }
+        };
+
+        return cell_range{ this };
+    }
+
+    // inline row_ref    cell_ref::row()    const { return row_ref(*category_, row_index()); }
+    // inline column_ref cell_ref::column() const { return column_ref(category_->table_columns[column_index_], column_index_); }
+
+    inline value_ref cell_ref::value() const
+    {
+        const typed_value& tv =
+            row_->table().schema().table_rows[row_->index()][col_->index()];
+            //category_->table_rows[row_index_][column_index_];
+        return value_ref(tv);
+    }
+
+    inline size_t row_ref::cell_count() const 
+    { 
+        return table_->column_count(); 
+    }
+
+    inline cell_ref row_ref::cell(const column_ref& col) const
+    // cell_ref row_ref::cell(size_t column_index) const 
+    {
+        return cell_ref(*this, col);
+    }
+
 
     //========================================================================
     // TABLE VIEW IMPLEMENTATION
@@ -590,13 +867,28 @@ namespace arf
     // ROW VIEW IMPLEMENTATION
     //========================================================================
     
-    inline const value* row_view::get_ptr(const std::string& column_name) const
+    template<typename T>
+    const T* row_view::get_ptr(const std::string& column_name) const
     {
-        auto idx = table_->column_index(column_name);
-        if (!idx || *idx >= row_->size())
-            return nullptr;
+        if (const typed_value* tv = get_typed_ptr(column_name))            
+            return std::get_if<T>(&tv->val);
+        return nullptr;
+    }
 
-        return &(*row_)[*idx];
+    inline std::optional<value_ref> row_view::get(const std::string& name) const
+    {
+        auto idx = table_->column_index(name);
+        if (!idx)
+            return std::nullopt;
+        return value_ref((*row_)[*idx]);        
+    }
+
+    inline const typed_value* row_view::get_typed_ptr(const std::string& name) const
+    {
+        auto idx = table_->column_index(name);
+        if (!idx)
+            return nullptr;
+        return &(*row_)[*idx];        
     }
     
     inline std::optional<std::string> row_view::get_string(const std::string& col) const 
@@ -610,80 +902,23 @@ namespace arf
     {
         if (auto p = get_ptr<int64_t>(col))
             return *p;
-        
-        if (auto p = get_ptr<std::string>(col))
-        {
-            try { return std::stoll(*p); } 
-            catch (...) { return std::nullopt; }
-        }
-        
-        return std::nullopt;
+        return std::nullopt;        
     }
 
     inline std::optional<double> row_view::get_float(const std::string& col) const 
     {
         if (auto p = get_ptr<double>(col))
             return *p;
-        
-        if (auto p = get_ptr<std::string>(col))
-        {
-            try { return std::stod(*p); } 
-            catch (...) { return std::nullopt; }
-        }
-        
-        return std::nullopt;
+        return std::nullopt;        
     }
 
     inline std::optional<bool> row_view::get_bool(const std::string& col) const 
     {
         if (auto p = get_ptr<bool>(col))
             return *p;
+        return std::nullopt;
+    }
         
-        if (auto p = get_ptr<std::string>(col))
-        {
-            std::string lower = detail::to_lower(*p);
-            if (lower == "true" || lower == "yes" || lower == "1")
-                return true;
-            if (lower == "false" || lower == "no" || lower == "0")
-                return false;
-        }
-        
-        return std::nullopt;
-    }
-    
-    inline std::optional<std::span<const std::string>>
-    row_view::get_string_array(const std::string& col) const
-    {
-        if (auto* v = get_ptr(col))
-        {
-            if (auto* arr = std::get_if<std::vector<std::string>>(v))
-                return std::span<const std::string>(*arr);
-        }
-        return std::nullopt;
-    }
-
-    inline std::optional<std::span<const int64_t>> 
-    row_view::get_int_array(const std::string& col) const 
-    {
-        if (auto* v = get_ptr(col))
-        {
-            if (auto* arr = std::get_if<std::vector<int64_t>>(v))
-                return std::span<const int64_t>(*arr);
-        }
-        return std::nullopt;
-    }
-    
-    inline std::optional<std::span<const double>> 
-    row_view::get_float_array(const std::string& col) const 
-    {
-        if (auto* v = get_ptr(col))
-        {
-            if (auto* arr = std::get_if<std::vector<double>>(v))
-                return std::span<const double>(*arr);
-        }
-        return std::nullopt;
-    }
-    
     inline bool row_view::is_base_row() const 
     {
         return source_category_ == table_->cat_;
@@ -695,100 +930,84 @@ namespace arf
 
     inline std::optional<value_ref> get(const document& doc, const std::string& path)
     {
-        if (const value* v = detail::find_value_ptr(doc, path))
-            return value_ref(*v);
-        return std::nullopt;
-    }
-
-    inline std::optional<value> get_value(const document& doc, const std::string& path)
-    {
-        if (const value* v = detail::find_value_ptr(doc, path))
-            return *v;
+        if (const typed_value* tv = detail::find_typed_value_ptr(doc, path))
+            return value_ref(*tv);
         return std::nullopt;
     }
 
     inline std::optional<std::string> get_string(const document& doc, const std::string& path)
     {
-        auto val = get_value(doc, path);
-        if (!val) return std::nullopt;
-        
-        if (auto* str = std::get_if<std::string>(&*val))
-            return *str;
-        
+        if (auto ref = get(doc, path))
+        {
+            if (ref->declared() && ref->type() != value_type::string)
+                return std::nullopt;
+
+            if (auto* s = std::get_if<std::string>(&ref->raw()))
+                return *s;
+        }
         return std::nullopt;
     }
 
     inline std::optional<int64_t> get_int(const document& doc, const std::string& path)
     {
-        auto val = get_value(doc, path);
-        if (!val) return std::nullopt;
-        
-        if (auto* i = std::get_if<int64_t>(&*val))
-            return *i;
-        
-        // Try to convert from string
-        if (auto* str = std::get_if<std::string>(&*val))
+        if (auto ref = get(doc, path))
         {
-            try {
-                return std::stoll(*str);
-            } catch (...) {
+            if (ref->declared() && ref->type() != value_type::integer)
                 return std::nullopt;
-            }
+
+            return ref->as_int();
         }
-        
         return std::nullopt;
     }
 
     inline std::optional<double> get_float(const document& doc, const std::string& path)
     {
-        auto val = get_value(doc, path);
-        if (!val) return std::nullopt;
-        
-        if (auto* d = std::get_if<double>(&*val))
-            return *d;
-        
-        // Try to convert from string
-        if (auto* str = std::get_if<std::string>(&*val))
+        if (auto ref = get(doc, path))
         {
-            try {
-                return std::stod(*str);
-            } catch (...) {
+            if (ref->declared() && ref->type() != value_type::decimal)
                 return std::nullopt;
-            }
+
+            return ref->as_float();
         }
-        
         return std::nullopt;
     }
 
     inline std::optional<bool> get_bool(const document& doc, const std::string& path)
     {
-        auto val = get_value(doc, path);
-        if (!val) return std::nullopt;
-        
-        if (auto* b = std::get_if<bool>(&*val))
-            return *b;
-        
-        // Try to convert from string
-        if (auto* str = std::get_if<std::string>(&*val))
+        if (auto ref = get(doc, path))
         {
-            std::string lower = detail::to_lower(*str);
-            if (lower == "true" || lower == "yes" || lower == "1")
-                return true;
-            if (lower == "false" || lower == "no" || lower == "0")
-                return false;
+            if (ref->declared() && ref->type() != value_type::boolean)
+                return std::nullopt;
+
+            return ref->as_bool();
         }
-        
         return std::nullopt;
     }
     
-    template<typename T>
-    inline std::optional<std::span<const T>> get_array(const document& doc, const std::string& path)
+    inline std::optional<std::span<const std::string>>
+    get_string_array(const document& doc, const std::string& path)
     {
         if (auto ref = get(doc, path))
-            return ref->as_array<T>();
+            return ref->string_array();
+        return std::nullopt;
+    }    
+        
+    inline std::optional<std::span<const int64_t>>
+    get_int_array(const document& doc, const std::string& path)
+    {
+        if (auto ref = get(doc, path))
+            return ref->int_array();
+        return std::nullopt;
+    }    
+        
+    inline std::optional<std::span<const double>>
+    get_float_array(const document& doc, const std::string& path)
+    {
+        if (auto ref = get(doc, path))
+            return ref->float_array();
         return std::nullopt;
     }
-    
+
     inline std::optional<table_view> get_table(const document& doc, const std::string& path)
     {
         auto parts = detail::split_path(path);

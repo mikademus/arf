@@ -36,6 +36,18 @@ namespace arf
         int_array,
         float_array
     };
+
+    enum class type_ascription
+    {
+        tacit,    // implicit, not defined in source
+        declared  // explicitly defined in source
+    };
+
+    enum class value_locus
+    {
+        key_value,  // declared via key = value
+        table_cell  // declared inside a table row
+    };
     
     using value = std::variant
                   <
@@ -48,18 +60,30 @@ namespace arf
                       std::vector<double>
                   >;
     
+    struct typed_value
+    {
+        value           val;
+        value_type      type;
+        type_ascription type_source {type_ascription::tacit};
+        value_locus     origin_site;
+
+        // Present iff value came from a literal in the source
+        std::optional<std::string> source_literal;        
+    };
+
     struct column 
     {
-        std::string name;
-        value_type type;
+        std::string     name;
+        value_type      type;
+        type_ascription type_source {type_ascription::tacit};
         
         bool operator==(const column& other) const
         {
-            return name == other.name && type == other.type;
+            return name == other.name && type == other.type && type_source == other.type_source;
         }
     };
     
-    using table_row = std::vector<value>;
+    using table_row = std::vector<typed_value>;
     
     enum class decl_kind
     {
@@ -79,7 +103,7 @@ namespace arf
     {
         std::string name;
         category * parent {nullptr};
-        std::map<std::string, value> key_values;
+        std::map<std::string, typed_value> key_values;
         std::vector<column> table_columns;
         std::vector<table_row> table_rows;
         std::map<std::string, std::unique_ptr<category>> subcategories;
