@@ -7,7 +7,9 @@
 #define ARF_REFLECT_HPP
 
 #include "arf_core.hpp"
+#include <functional>
 #include <span>
+#include <cassert>
 
 namespace arf
 {
@@ -221,6 +223,8 @@ namespace arf
 
         // rows including descendants
         std::vector<size_t> all_rows;
+
+        std::vector<size_t> late_rows;
     };
 
     class table_ref
@@ -247,10 +251,6 @@ namespace arf
         size_t          subcategory_count() const;
         table_partition_ref subcategory(size_t i) const;
         auto            subcategories() const;
-
-        // resolves the active subcategory for a table row
-        // NOTE: parameter is ALWAYS a table row index
-        size_t resolve_subcategory_index(size_t table_row_index) const;
 
         const std::vector<table_partition_info>& partitions() const;
         
@@ -373,85 +373,118 @@ namespace arf
     {
         constexpr size_t npos = static_cast<size_t>(-1);
 
+        // Invariant: direct_rows are assigned strictly by lexical scope,
+        // not by visibility or traversal order.        
         inline std::vector<table_partition_info>
-            build_partitions(const category& root)
+        build_partitions(const category& root)
         {
             std::vector<table_partition_info> parts;
 
-            // root partition
-            parts.push_back({ &root, npos, {}, {}, {} });
+            parts.push_back({
+                &root,
+                npos,
+                {},
+                {},
+                {},
+                {}
+            });
 
-            // stack holds indices into parts
             std::vector<size_t> stack;
             stack.push_back(0);
+
+            // A partition's direct_rows are the contiguous prefix before its first subcategory
+            std::vector<bool> direct_rows_sealed;
+            direct_rows_sealed.push_back(false); // root            
 
             auto enter_partition =
             [&](const category* cat)
             {
-                size_t parent_idx = stack.back();
+                const size_t parent = stack.back();
+                
+                // Once a subcategory is entered, the parent stops accepting direct rows
+                direct_rows_sealed[parent] = true;
 
-                size_t idx = parts.size();
-                parts.push_back({ cat, parent_idx, {}, {}, {} });
+                const size_t idx = parts.size();
 
-                parts[parent_idx].children.push_back(idx);
+                parts.push_back({
+                    cat,
+                    parent,
+                    {},
+                    {},
+                    {},
+                    {}
+                });
+
+                parts[parent].children.push_back(idx);
+                direct_rows_sealed.push_back(false);
                 stack.push_back(idx);
             };
 
-            auto unwind_to_parent_of =
-            [&](const category* cat)
+            auto leave_partition =
+            [&]()
             {
-                while (!stack.empty())
+                assert(stack.size() > 1);
+                stack.pop_back();
+            };
+
+            std::function<void(const category&)> walk;
+            walk =
+            [&](const category& cat)
+            {
+                for (const decl_ref& decl : cat.source_order)
                 {
-                    const category* current = parts[stack.back()].cat;
-                    if (current == cat->parent)
-                        break;
-                    stack.pop_back();
+                    switch (decl.kind)
+                    {
+                        case decl_kind::table_row:
+                        {
+                            const size_t current = stack.back();
+
+                            if (!direct_rows_sealed[current])
+                                parts[current].direct_rows.push_back(decl.row_index);
+                            else
+                                parts[current].late_rows.push_back(decl.row_index);
+
+                            break;
+                        }
+
+                        case decl_kind::subcategory:
+                        {
+                            const category* sub = decl.subcategory;
+                            assert(sub);
+
+                            enter_partition(sub);
+                            walk(*sub);
+                            leave_partition();
+                            break;
+                        }
+
+                        case decl_kind::key:
+                            break;
+                    }
                 }
             };
 
-            for (const decl_ref& decl : root.source_order)
-            {
-                switch (decl.kind)
-                {
-                    case decl_kind::table_row:
-                    {
-                        size_t row = decl.row_index;
+            walk(root);
 
-                        // row belongs to *all open partitions*
-                        for (size_t p : stack)
-                            parts[p].direct_rows.push_back(row);
-                        break;
-                    }
-
-                    case decl_kind::subcategory:
-                    {
-                        const auto it = root.subcategories.find(decl.name);
-                        if (it == root.subcategories.end())
-                            break;
-
-                        const category* sub = it->second.get();
-
-                        // implicit collapse
-                        unwind_to_parent_of(sub);
-
-                        enter_partition(sub);
-                        break;
-                    }
-
-                    case decl_kind::key:
-                        break;
-                }
-            }
-
-            // compute recursive row sets bottom-up
+            // Aggregate rows bottom-up, preserving authored order
+            // Invariant: all_rows = direct_rows + late_rows + children (in authored order)
             for (size_t i = parts.size(); i-- > 0; )
             {
                 auto& p = parts[i];
+
                 p.all_rows = p.direct_rows;
 
+                // Rows authored after subcategories still belong to this partition
+                p.all_rows.insert(
+                    p.all_rows.end(),
+                    p.late_rows.begin(),
+                    p.late_rows.end()
+                );
+
+                // Then child partitions, in authored order
                 for (size_t c : p.children)
                 {
-                    auto& child = parts[c];
+                    const auto& child = parts[c];
                     p.all_rows.insert(
                         p.all_rows.end(),
                         child.all_rows.begin(),
@@ -461,7 +494,7 @@ namespace arf
             }
 
             return parts;
-        }        
+        }
     }
 
     size_t table_cell_ref::row_index() const 
@@ -477,8 +510,9 @@ namespace arf
 
     inline value_ref table_cell_ref::value() const
     {
-        const typed_value& tv =
-            row_->table().schema().table_rows[row_->index()][col_->index()];
+        const table_row& row =
+            row_->table().schema().table_rows[row_->index()];
+        const typed_value& tv = row.cells[col_->index()];
         return value_ref(tv);
     }
 
@@ -767,22 +801,19 @@ namespace arf
         return subcat_range{this};
     }
 
-    inline size_t table_ref::resolve_subcategory_index(size_t table_row_index) const
+    inline table_partition_ref table_row_ref::subcategory() const
     {
-        const auto& parts = partitions();
+        const auto& parts = table_->partitions();
+        
         for (size_t i = 0; i < parts.size(); ++i)
         {
             const auto& rows = parts[i].direct_rows;
-            if (std::find(rows.begin(), rows.end(), table_row_index) != rows.end())
-                return i;
+            if (std::find(rows.begin(), rows.end(), row_index_) != rows.end())
+                return table_partition_ref(*table_, i);
         }
-        return 0;  // Default to root
-    }
-
-    inline table_partition_ref table_row_ref::subcategory() const
-    {
-        size_t idx = table_->resolve_subcategory_index(row_index_);
-        return table_partition_ref(*table_, idx);
+    
+        // Fallback: root partition
+        return table_partition_ref(*table_, 0);
     }    
 }
 

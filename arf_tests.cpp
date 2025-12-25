@@ -286,7 +286,7 @@ void test_parser(test_suite& suite)
         auto& items = *it->second;
         if (items.table_rows.empty()) return false;
         
-        return items.table_rows[0][0].origin_site == arf::value_locus::table_cell;
+        return items.table_rows[0].cells[0].origin_site == arf::value_locus::table_cell;
     });
     
     suite.run_test("Handle parse errors gracefully", []() {
@@ -306,6 +306,21 @@ void test_parser(test_suite& suite)
         
         // Should have entries in source_order: rows, subcategories
         return catalog.source_order.size() > 0;
+    });
+
+    suite.run_test("parser: source_order includes nested rows", []() {
+        auto result = arf::parse(test_data::nested_subcategories);
+        if (!result.has_value()) return false;
+
+        const auto& monsters = *result.doc->categories.at("monsters");
+
+        size_t row_decls = 0;
+        for (const auto& d : monsters.source_order)
+            if (d.kind == arf::decl_kind::table_row)
+                ++row_decls;
+
+        // All rows, including nested, are visible here
+        return row_decls == monsters.table_rows.size();
     });
 }
 
@@ -580,7 +595,125 @@ void test_reflection_api(test_suite& suite)
         return table.row_count() == 3 &&
                table.row(0).index() == 0;
     });
-    
+
+    suite.run_test("table_ref: direct rows respect lexical scope", []() {
+        const char* src = R"(
+    items:
+        # id
+        1
+    :sub
+        2
+    /sub
+    /items
+    )";
+
+        auto result = arf::parse(src);
+        if (!result.has_value()) return false;
+
+        arf::table_ref table(*result.doc->categories.at("items"));
+        const auto& parts = table.partitions();
+
+        if (parts.size() != 2) return false;
+
+        const auto& root = parts[0];
+        const auto& sub  = parts[1];
+
+        // root authored only row 1
+        if (root.direct_rows.size() != 1) return false;
+        if (root.all_rows.size() != 2) return false;
+
+        // sub authored only row 2
+        if (sub.direct_rows.size() != 1) return false;
+        if (sub.all_rows.size() != 1) return false;
+
+        return true;
+    });
+
+    suite.run_test("table_ref: root direct rows stop at first subcategory", []() {
+        auto result = arf::parse(test_data::nested_subcategories);
+        if (!result.has_value()) return false;
+
+        arf::table_ref table(*result.doc->categories.at("monsters"));
+        const auto& root = table.partitions()[0];
+
+        // monsters has 2 base rows before any subcategory
+        return root.direct_rows.size() == 2;
+    });
+
+    suite.run_test("table_ref: partition count is exact", []() {
+        auto result = arf::parse(test_data::nested_subcategories);
+        if (!result.has_value()) return false;
+
+        auto it = result.doc->categories.find("monsters");
+        if (it == result.doc->categories.end()) return false;
+
+        arf::table_ref table(*it->second);
+        const auto& parts = table.partitions();
+
+        // root + goblins + undead + bosses
+        return parts.size() == 4;
+    });
+
+    suite.run_test("table_ref: partition parentage is correct", []() {
+        auto result = arf::parse(test_data::nested_subcategories);
+        if (!result.has_value()) return false;
+
+        auto it = result.doc->categories.find("monsters");
+        if (it == result.doc->categories.end()) return false;
+
+        arf::table_ref table(*it->second);
+        const auto& parts = table.partitions();
+
+        // Find partitions by name
+        auto find = [&](std::string_view name) -> size_t {
+            for (size_t i = 0; i < parts.size(); ++i)
+                if (parts[i].cat->name == name)
+                    return i;
+            return arf::detail::npos;
+        };
+
+        size_t root    = find("monsters");
+        size_t goblins = find("goblins");
+        size_t undead  = find("undead");
+        size_t bosses  = find("bosses");
+
+        if (root == arf::detail::npos ||
+            goblins == arf::detail::npos ||
+            undead == arf::detail::npos ||
+            bosses == arf::detail::npos)
+            return false;
+
+        // goblins and undead are children of root
+        if (parts[goblins].parent != root) return false;
+        if (parts[undead].parent  != root) return false;
+
+        // bosses is child of undead
+        if (parts[bosses].parent != undead) return false;
+
+        return true;
+    });
+
+    suite.run_test("table_ref: partition creation order follows source order", []() {
+        auto result = arf::parse(test_data::nested_subcategories);
+        if (!result.has_value()) return false;
+
+        auto it = result.doc->categories.find("monsters");
+        if (it == result.doc->categories.end()) return false;
+
+        arf::table_ref table(*it->second);
+        const auto& parts = table.partitions();
+
+        // Expected creation order:
+        // monsters (root), goblins, undead, bosses
+        if (parts.size() < 4) return false;
+
+        return
+            parts[0].cat->name == "monsters" &&
+            parts[1].cat->name == "goblins"  &&
+            parts[2].cat->name == "undead"   &&
+            parts[3].cat->name == "bosses";
+    });
+
     suite.run_test("table_ref: partition building", []() {
         auto result = arf::parse(test_data::nested_subcategories);
         if (!result.has_value()) return false;
@@ -593,6 +726,105 @@ void test_reflection_api(test_suite& suite)
         
         // Should have root + goblins + undead + bosses = 4 partitions
         return partitions.size() >= 4;
+    });
+
+    suite.run_test("table_ref: root partition owns all rows", []() {
+        auto result = arf::parse(test_data::nested_subcategories);
+        if (!result.has_value()) return false;
+
+        auto it = result.doc->categories.find("monsters");
+        if (it == result.doc->categories.end()) return false;
+
+        arf::table_ref table(*it->second);
+        const auto& partitions = table.partitions();
+
+        if (partitions.empty()) return false;
+
+        // root is conventionally index 0
+        const auto& root = partitions[0];
+
+        // root has no parent
+        if (root.parent != arf::detail::npos) return false;
+
+        // root should include all table rows
+        return root.all_rows.size() == table.row_count();
+    });
+
+    suite.run_test("table_ref: partition direct rows are not inherited", []() {
+        auto result = arf::parse(test_data::nested_subcategories);
+        if (!result.has_value()) return false;
+
+        auto it = result.doc->categories.find("monsters");
+        if (it == result.doc->categories.end()) return false;
+
+        arf::table_ref table(*it->second);
+        const auto& partitions = table.partitions();
+
+        if (partitions.size() < 2) return false;
+
+        // find a non-root partition that actually has rows
+        for (size_t i = 1; i < partitions.size(); ++i)
+        {
+            const auto& p = partitions[i];
+
+            if (!p.direct_rows.empty())
+            {
+                // direct rows must be a subset of all_rows
+                if (p.direct_rows.size() > p.all_rows.size())
+                    return false;
+
+                // root should not list these as direct rows
+                const auto& root = partitions[0];
+                for (auto r : p.direct_rows)
+                {
+                    if (std::find(root.direct_rows.begin(),
+                                root.direct_rows.end(),
+                                r) != root.direct_rows.end())
+                        return false;
+                }
+
+                return true;
+            }
+        }
+
+        return false;
+    });
+
+    suite.run_test("table_ref: partition parent-child consistency", []() {
+        auto result = arf::parse(test_data::nested_subcategories);
+        if (!result.has_value()) return false;
+
+        auto it = result.doc->categories.find("monsters");
+        if (it == result.doc->categories.end()) return false;
+
+        arf::table_ref table(*it->second);
+        const auto& partitions = table.partitions();
+
+        for (size_t i = 0; i < partitions.size(); ++i)
+        {
+            const auto& p = partitions[i];
+
+            // check parent -> child linkage
+            if (p.parent != arf::detail::npos)
+            {
+                if (p.parent >= partitions.size()) return false;
+
+                const auto& parent = partitions[p.parent];
+                if (std::find(parent.children.begin(),
+                            parent.children.end(),
+                            i) == parent.children.end())
+                    return false;
+            }
+
+            // check child -> parent linkage
+            for (auto c : p.children)
+            {
+                if (c >= partitions.size()) return false;
+                if (partitions[c].parent != i) return false;
+            }
+        }
+
+        return true;
     });
     
     suite.run_test("table_partition_ref: direct vs all rows", []() {

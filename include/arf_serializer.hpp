@@ -88,6 +88,13 @@ namespace arf
                         break;
 
                     case decl_kind::table_row:
+                    {
+                        const table_row& row = cat.table_rows[decl.row_index];
+
+                        // Only emit rows that actually belong to this category
+                        if (row.source_category != &cat)
+                            break;
+
                         if (!table_header_emitted)
                         {
                             write_table_header(cat);
@@ -95,6 +102,7 @@ namespace arf
                         }
                         write_table_row(cat, decl.row_index);
                         break;
+                    }
                 }
             }
         }
@@ -175,7 +183,7 @@ namespace arf
             const table_row& row = cat.table_rows[row_index];
 
             bool first = true;
-            for (const typed_value& tv : row)
+            for (const typed_value& tv : row.cells)
             {
                 if (!first)
                     out_ << "  ";

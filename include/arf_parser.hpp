@@ -186,7 +186,7 @@ namespace arf
 
                 category* ptr = subcat.get();
                 parent->subcategories[name] = std::move(subcat);
-                parent->source_order.push_back({decl_kind::subcategory, name});
+                parent->source_order.push_back({ decl_kind::subcategory, name, 0, ptr });
                 category_stack_.push_back(ptr);
                 
                 // When entering a subcategory, we stay in table mode IF the parent was in table mode
@@ -381,6 +381,8 @@ namespace arf
                 }
                 
                 table_row row;
+                row.source_category = category_stack_.back();
+                
                 for (size_t i = 0; i < cells.size(); ++i)
                 {
                     const column& col = current_table_[i];
@@ -395,7 +397,7 @@ namespace arf
                         tv.origin_site    = value_locus::table_cell;
                         tv.source_literal = std::string(cells[i]);
 
-                        row.push_back(std::move(tv));
+                        row.cells.push_back(std::move(tv));
                     }
                     else
                     {
@@ -411,7 +413,7 @@ namespace arf
                         tv.origin_site    = value_locus::table_cell;
                         tv.source_literal = std::string(cells[i]);
 
-                        row.push_back(std::move(tv));
+                        row.cells.push_back(std::move(tv));
                     }
                 }
                                 

@@ -54,7 +54,7 @@ namespace arf
             : row_(row), table_(table), source_category_(source) {}
         
         // Index-based access
-        value_ref operator[](size_t index) const { return value_ref((*row_)[index]); }
+        value_ref operator[](size_t index) const { return value_ref(row_->cells[index]); }
         
         // Name-based value access
         const typed_value* get_typed_ptr(const std::string& name) const;
@@ -526,7 +526,7 @@ namespace arf
         auto idx = table_->column_index(name);
         if (!idx)
             return std::nullopt;
-        return value_ref((*row_)[*idx]);        
+        return value_ref(row_->cells[*idx]);        
     }
 
     inline const typed_value* row_view::get_typed_ptr(const std::string& name) const
@@ -534,7 +534,7 @@ namespace arf
         auto idx = table_->column_index(name);
         if (!idx)
             return nullptr;
-        return &(*row_)[*idx];        
+        return &row_->cells[*idx];        
     }
     
     inline std::optional<std::string> row_view::get_string(const std::string& col) const 
