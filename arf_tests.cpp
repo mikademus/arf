@@ -728,6 +728,214 @@ void test_reflection_api(test_suite& suite)
         return partitions.size() >= 4;
     });
 
+    suite.run_test("table_ref: root owns rows after subcategories", []() {
+        const char* src = R"(
+    items:
+        # id
+        1
+    :sub
+        2
+    /sub
+        3
+    /items
+    )";
+
+        auto result = arf::parse(src);
+        if (!result.has_value()) return false;
+
+        arf::table_ref table(*result.doc->categories.at("items"));
+        const auto& parts = table.partitions();
+
+        if (parts.size() != 2) return false;
+
+        const auto& root = parts[0];
+        const auto& sub  = parts[1];
+
+        // root authored row 1 before, row 3 after
+        if (root.direct_rows.size() != 1) return false;
+        if (root.all_rows.size() != 3) return false;
+
+        // sub authored only row 2
+        if (sub.direct_rows.size() != 1) return false;
+        if (sub.all_rows.size() != 1) return false;
+
+        return true;
+    });
+
+    suite.run_test("table_ref: child rows are not direct rows of parent", []() {
+        const char* src = R"(
+    items:
+        # id
+        1
+    :sub
+        2
+    /sub
+    /items
+    )";
+
+        auto result = arf::parse(src);
+        if (!result.has_value()) return false;
+
+        arf::table_ref table(*result.doc->categories.at("items"));
+        const auto& parts = table.partitions();
+
+        if (parts.size() != 2) return false;
+
+        const auto& root = parts[0];
+
+        // root.direct_rows must NOT include row from subcategory
+        if (root.direct_rows.size() != 1) return false;
+
+        return true;
+    });
+
+    suite.run_test("table_ref: deep nesting with late rows", []() {
+        const char* src = R"(
+    things:
+        # id
+        1
+    :sub1
+        2
+    :sub2
+        3
+    /sub2
+        4
+    /sub1
+        5
+    /things
+    )";
+
+        auto result = arf::parse(src);
+        if (!result.has_value()) return false;
+
+        arf::table_ref table(*result.doc->categories.at("things"));
+        const auto& parts = table.partitions();
+
+        if (parts.size() != 3) return false;
+
+        const auto& root = parts[0];
+        const auto& sub1 = parts[1];
+        const auto& sub2 = parts[2];
+
+        // root: rows 1 and 5 are authored here
+        if (root.direct_rows.size() != 1) return false;
+        if (root.all_rows.size() != 5) return false;
+
+        // sub1: rows 2 and 4
+        if (sub1.direct_rows.size() != 1) return false;
+        if (sub1.all_rows.size() != 3) return false;
+
+        // sub2: only row 3
+        if (sub2.direct_rows.size() != 1) return false;
+        if (sub2.all_rows.size() != 1) return false;
+
+        return true;
+    });
+
+    suite.run_test("table_ref: root all_rows preserve authored order", []() {
+        auto result = arf::parse(test_data::nested_subcategories);
+        if (!result.has_value()) return false;
+
+        arf::table_ref table(*result.doc->categories.at("monsters"));
+        const auto& root = table.partitions()[0];
+
+        // monsters has 8 rows total
+        if (root.all_rows.size() != 8) return false;
+
+        // indices must be strictly increasing
+        for (size_t i = 1; i < root.all_rows.size(); ++i)
+            if (root.all_rows[i] <= root.all_rows[i - 1])
+                return false;
+
+        return true;
+    });
+
+    suite.run_test("table_ref: authored order beats depth-first order", []() {
+        const char* src = R"(
+items:
+    # id
+    1
+:sub
+    2
+/sub
+    3
+/items
+)";
+
+        auto result = arf::parse(src);
+        if (!result.has_value()) return false;
+
+        arf::table_ref table(*result.doc->categories.at("items"));
+        const auto& parts = table.partitions();
+
+        if (parts.size() != 2) return false;
+
+        const auto& root = parts[0];
+        const auto& sub  = parts[1];
+
+        // Sanity: ownership
+        if (root.direct_rows.size() != 1) return false; // row 1
+        if (sub.direct_rows.size()  != 1) return false; // row 2
+
+        // Root must own all rows
+        if (root.all_rows.size() != 3) return false;
+
+        // Authored order must be: 1, 2, 3
+        // DFS order would be:     1, 3, 2   (WRONG)
+        if (root.all_rows[0] != 1) return false;
+        if (root.all_rows[1] != 2) return false;
+        if (root.all_rows[2] != 3) return false;
+
+        return true;
+    });    
+
+    suite.run_test("table_ref: child all_rows is subsequence of root all_rows", []() {
+        const char* src = R"(
+items:
+    # id
+    1
+:sub
+    2
+:deep
+    3
+/deep
+    4
+/sub
+    5
+/items
+)";
+
+        auto result = arf::parse(src);
+        if (!result.has_value()) return false;
+
+        arf::table_ref table(*result.doc->categories.at("items"));
+        const auto& parts = table.partitions();
+
+        if (parts.size() != 3) return false;
+
+        const auto& root = parts[0];
+        const auto& sub  = parts[1];
+        const auto& deep = parts[2];
+
+        // Helper: check subsequence
+        auto is_subsequence =
+        [](const std::vector<size_t>& a, const std::vector<size_t>& b)
+        {
+            size_t j = 0;
+            for (size_t i = 0; i < a.size() && j < b.size(); ++i)
+            {
+                if (a[i] == b[j])
+                    ++j;
+            }
+            return j == b.size();
+        };
+
+        if (!is_subsequence(root.all_rows, sub.all_rows)) return false;
+        if (!is_subsequence(root.all_rows, deep.all_rows)) return false;
+
+        return true;
+    });
+
     suite.run_test("table_ref: root partition owns all rows", []() {
         auto result = arf::parse(test_data::nested_subcategories);
         if (!result.has_value()) return false;

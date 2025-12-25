@@ -373,6 +373,29 @@ namespace arf
     {
         constexpr size_t npos = static_cast<size_t>(-1);
 
+        inline void collect_rows_depth_first(
+            const category& cat,
+            std::vector<size_t>& out
+        )
+        {
+            for (const decl_ref& decl : cat.source_order)
+            {
+                switch (decl.kind)
+                {
+                    case decl_kind::table_row:
+                        out.push_back(decl.row_index);
+                        break;
+
+                    case decl_kind::subcategory:
+                        collect_rows_depth_first(*decl.subcategory, out);
+                        break;
+
+                    case decl_kind::key:
+                        break;
+                }
+            }
+        }        
+
         // Invariant: direct_rows are assigned strictly by lexical scope,
         // not by visibility or traversal order.        
         inline std::vector<table_partition_info>
@@ -465,33 +488,57 @@ namespace arf
             };
 
             walk(root);
+            std::vector<size_t> global_rows;
+            collect_rows_depth_first(root, global_rows);
 
-            // Aggregate rows bottom-up, preserving authored order
             // Invariant: all_rows = direct_rows + late_rows + children (in authored order)
+            
+            // Aggregate rows bottom-up, preserving authored order
             for (size_t i = parts.size(); i-- > 0; )
             {
                 auto& p = parts[i];
 
-                p.all_rows = p.direct_rows;
-
-                // Rows authored after subcategories still belong to this partition
-                p.all_rows.insert(
-                    p.all_rows.end(),
-                    p.late_rows.begin(),
-                    p.late_rows.end()
-                );
-
-                // Then child partitions, in authored order
-                for (size_t c : p.children)
+                if (p.parent == npos)
                 {
-                    const auto& child = parts[c];
-                    p.all_rows.insert(
-                        p.all_rows.end(),
-                        child.all_rows.begin(),
-                        child.all_rows.end()
-                    );
+                    // Root owns *all* rows in authored order
+                    p.all_rows = global_rows;
+                    continue;
                 }
-            }
+
+                // Non-root: replay local authored order
+                p.all_rows.clear();
+
+                std::unordered_map<const category*, const table_partition_info*> children;
+                for (size_t c : p.children)
+                    children.emplace(parts[c].cat, &parts[c]);
+
+                for (const decl_ref& decl : p.cat->source_order)
+                {
+                    switch (decl.kind)
+                    {
+                        case decl_kind::table_row:
+                            p.all_rows.push_back(decl.row_index);
+                            break;
+
+                        case decl_kind::subcategory:
+                        {
+                            auto it = children.find(decl.subcategory);
+                            if (it != children.end())
+                            {
+                                const auto& child = *it->second;
+                                p.all_rows.insert(
+                                    p.all_rows.end(),
+                                    child.all_rows.begin(),
+                                    child.all_rows.end()
+                                );
+                            }
+                            break;
+                        }
+
+                        case decl_kind::key:
+                            break;
+                    }
+                }
 
             return parts;
         }
