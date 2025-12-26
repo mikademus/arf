@@ -82,8 +82,11 @@ namespace arf
 
     struct category;
     
+    using table_row_id = size_t;
+
     struct table_row
     {
+        table_row_id global_id;
         std::vector<typed_value> cells;
         const category* source_category {nullptr};
     };
@@ -98,8 +101,9 @@ namespace arf
     struct decl_ref
     {
         decl_kind kind;
-        std::string name; // empty for table
-        size_t row_index {0};   // row index (used for table_row)
+        std::string name;           // empty for table
+        table_row_id row_id;        // global, authoritative
+        size_t row_index {0};       // row index (used for table_row)
         const category* subcategory {nullptr}; // valid iff kind == subcategory
     };
 

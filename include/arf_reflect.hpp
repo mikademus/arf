@@ -224,7 +224,7 @@ namespace arf
         // rows including descendants
         std::vector<size_t> all_rows;
 
-        std::vector<size_t> late_rows;
+        std::vector<size_t> late_rows;        
     };
 
     class table_ref
@@ -373,28 +373,28 @@ namespace arf
     {
         constexpr size_t npos = static_cast<size_t>(-1);
 
-        inline void collect_rows_depth_first(
-            const category& cat,
-            std::vector<size_t>& out
-        )
-        {
-            for (const decl_ref& decl : cat.source_order)
-            {
-                switch (decl.kind)
-                {
-                    case decl_kind::table_row:
-                        out.push_back(decl.row_index);
-                        break;
-
-                    case decl_kind::subcategory:
-                        collect_rows_depth_first(*decl.subcategory, out);
-                        break;
-
-                    case decl_kind::key:
-                        break;
-                }
-            }
-        }        
+        //inline void collect_rows_depth_first(
+        //    const category& cat,
+        //    std::vector<size_t>& out
+        //)
+        //{
+        //    for (const decl_ref& decl : cat.source_order)
+        //    {
+        //        switch (decl.kind)
+        //        {
+        //            case decl_kind::table_row:
+        //                out.push_back(decl.row_index);
+        //                break;
+//
+        //            case decl_kind::subcategory:
+        //                collect_rows_depth_first(*decl.subcategory, out);
+        //                break;
+//
+        //            case decl_kind::key:
+        //                break;
+        //        }
+        //    }
+        //}        
 
         // Invariant: direct_rows are assigned strictly by lexical scope,
         // not by visibility or traversal order.        
@@ -415,20 +415,20 @@ namespace arf
             std::vector<size_t> stack;
             stack.push_back(0);
 
-            // A partition's direct_rows are the contiguous prefix before its first subcategory
+            //std::vector<size_t> document_rows;
+
+            // Once a subcategory is seen, direct rows are sealed
             std::vector<bool> direct_rows_sealed;
-            direct_rows_sealed.push_back(false); // root            
+            direct_rows_sealed.push_back(false); // root
 
             auto enter_partition =
             [&](const category* cat)
             {
                 const size_t parent = stack.back();
-                
-                // Once a subcategory is entered, the parent stops accepting direct rows
+
                 direct_rows_sealed[parent] = true;
 
                 const size_t idx = parts.size();
-
                 parts.push_back({
                     cat,
                     parent,
@@ -450,6 +450,7 @@ namespace arf
                 stack.pop_back();
             };
 
+            // Pass 1: assign ownership, direct_rows, late_rows
             std::function<void(const category&)> walk;
             walk =
             [&](const category& cat)
@@ -460,6 +461,8 @@ namespace arf
                     {
                         case decl_kind::table_row:
                         {
+                            //document_rows.push_back(decl.row_index);
+
                             const size_t current = stack.back();
 
                             if (!direct_rows_sealed[current])
@@ -488,61 +491,57 @@ namespace arf
             };
 
             walk(root);
-            std::vector<size_t> global_rows;
-            collect_rows_depth_first(root, global_rows);
 
-            // Invariant: all_rows = direct_rows + late_rows + children (in authored order)
-            
-            // Aggregate rows bottom-up, preserving authored order
+            std::unordered_map<const category*, size_t> cat_to_partition;
+            for (size_t i = 0; i < parts.size(); ++i)
+                cat_to_partition[parts[i].cat] = i;            
+
+            // Pass 2: build all_rows bottom-up, strictly by partition ownership
             for (size_t i = parts.size(); i-- > 0; )
             {
                 auto& p = parts[i];
-
-                if (p.parent == npos)
-                {
-                    // Root owns *all* rows in authored order
-                    p.all_rows = global_rows;
-                    continue;
-                }
-
-                // Non-root: replay local authored order
                 p.all_rows.clear();
 
-                std::unordered_map<const category*, const table_partition_info*> children;
-                for (size_t c : p.children)
-                    children.emplace(parts[c].cat, &parts[c]);
+                // 1. Direct rows (authored before first subcategory)
+                p.all_rows.insert(
+                    p.all_rows.end(),
+                    p.direct_rows.begin(),
+                    p.direct_rows.end()
+                );
 
+                // 2. Children, in source order
                 for (const decl_ref& decl : p.cat->source_order)
                 {
-                    switch (decl.kind)
-                    {
-                        case decl_kind::table_row:
-                            p.all_rows.push_back(decl.row_index);
-                            break;
+                    if (decl.kind != decl_kind::subcategory)
+                        continue;
 
-                        case decl_kind::subcategory:
-                        {
-                            auto it = children.find(decl.subcategory);
-                            if (it != children.end())
-                            {
-                                const auto& child = *it->second;
-                                p.all_rows.insert(
-                                    p.all_rows.end(),
-                                    child.all_rows.begin(),
-                                    child.all_rows.end()
-                                );
-                            }
-                            break;
-                        }
+                    auto it = cat_to_partition.find(decl.subcategory);
+                    if (it == cat_to_partition.end())
+                        continue;
 
-                        case decl_kind::key:
-                            break;
-                    }
+                    const auto& child = parts[it->second];
+                    if (child.parent != i)
+                        continue; // safety: ensure immediate child
+
+                    p.all_rows.insert(
+                        p.all_rows.end(),
+                        child.all_rows.begin(),
+                        child.all_rows.end()
+                    );
                 }
+
+                // 3. Late rows (authored after subcategories)
+                p.all_rows.insert(
+                    p.all_rows.end(),
+                    p.late_rows.begin(),
+                    p.late_rows.end()
+                );
+            }
 
             return parts;
         }
-    }
+        
+    } // ns detail
 
     size_t table_cell_ref::row_index() const 
     { 

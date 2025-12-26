@@ -35,7 +35,8 @@ namespace arf
                     errors_.push_back({0, "File exceeds maximum line limit", ""});
                     return parse_context{std::nullopt, std::move(errors_)};
                 }
-                
+
+                table_row_id next_row_id_ = 0;
                 line_num_ = 0;
                 doc_ = document{};
                 category_stack_.clear();
@@ -64,13 +65,14 @@ namespace arf
             }
             
         private:
+            table_row_id next_row_id_ {0};
             std::vector<std::string> lines_;
-            size_t line_num_ = 0;
+            size_t line_num_ {0};
             document doc_;
             std::vector<category*> category_stack_;
             std::vector<column> current_table_;
-            bool in_table_mode_ = false;
-            size_t table_mode_depth_ = 0;
+            bool in_table_mode_ {false};
+            size_t table_mode_depth_ {0};
             std::vector<parse_error> errors_;
             
             std::vector<std::string> split_lines(const std::string& input) 
@@ -186,7 +188,7 @@ namespace arf
 
                 category* ptr = subcat.get();
                 parent->subcategories[name] = std::move(subcat);
-                parent->source_order.push_back({ decl_kind::subcategory, name, 0, ptr });
+                parent->source_order.push_back({ decl_kind::subcategory, name, table_row_id{0}, 0, ptr });
                 category_stack_.push_back(ptr);
                 
                 // When entering a subcategory, we stay in table mode IF the parent was in table mode
@@ -381,6 +383,7 @@ namespace arf
                 }
                 
                 table_row row;
+                row.global_id = next_row_id_++;
                 row.source_category = category_stack_.back();
                 
                 for (size_t i = 0; i < cells.size(); ++i)
@@ -425,7 +428,9 @@ namespace arf
                 cat->source_order.push_back({
                     decl_kind::table_row,
                     {},
-                    row_index
+                    row.global_id,
+                    row_index,
+                    nullptr
                 });             
             }
             

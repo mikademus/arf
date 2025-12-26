@@ -308,7 +308,7 @@ void test_parser(test_suite& suite)
         return catalog.source_order.size() > 0;
     });
 
-    suite.run_test("parser: source_order includes nested rows", []() {
+    suite.run_test("source_order includes nested table rows", []() {
         auto result = arf::parse(test_data::nested_subcategories);
         if (!result.has_value()) return false;
 
@@ -321,6 +321,48 @@ void test_parser(test_suite& suite)
 
         // All rows, including nested, are visible here
         return row_decls == monsters.table_rows.size();
+    });
+
+    suite.run_test("Table: Global row IDs are unique", []() {
+        const char* src = R"(
+root:
+    # id
+    1
+:a
+    2
+:b
+    3
+/b
+    4
+/a
+    5
+)";
+
+        auto ctx = arf::parse(src);
+        if (!ctx.doc) return false;
+
+        std::vector<arf::table_row_id> ids;
+
+        const arf::category* root = ctx.doc->categories.at("root").get();
+
+        std::function<void(const arf::category*)> collect;
+        collect = [&](const arf::category* cat)
+        {
+            for (const auto& row : cat->table_rows)
+                ids.push_back(row.global_id);
+
+            for (const auto& [_, sub] : cat->subcategories)
+                collect(sub.get());
+        };
+
+        collect(root);
+
+        if (ids.empty()) return false;
+
+        auto sorted = ids;
+        std::sort(sorted.begin(), sorted.end());
+
+        return std::unique(sorted.begin(), sorted.end()) == sorted.end();
     });
 }
 
@@ -394,7 +436,7 @@ void test_query_api(test_suite& suite)
         return !missing.has_value();
     });
     
-    suite.run_test("Get table view", []() {
+    suite.run_test("Table: Get table view", []() {
         auto result = arf::parse(test_data::simple_table);
         if (!result.has_value()) return false;
         
@@ -404,7 +446,7 @@ void test_query_api(test_suite& suite)
                table->columns().size() == 3;
     });
     
-    suite.run_test("Access table row by index", []() {
+    suite.run_test("Table: Access table row by index", []() {
         auto result = arf::parse(test_data::simple_table);
         if (!result.has_value()) return false;
         
@@ -416,7 +458,7 @@ void test_query_api(test_suite& suite)
         return name.has_value() && *name == "shield";
     });
     
-    suite.run_test("Access table column by name", []() {
+    suite.run_test("Table: Access table column by name", []() {
         auto result = arf::parse(test_data::simple_table);
         if (!result.has_value()) return false;
         
@@ -427,7 +469,7 @@ void test_query_api(test_suite& suite)
         return idx.has_value() && *idx == 2;
     });
     
-    suite.run_test("Iterate table rows", []() {
+    suite.run_test("Table: Iterate table rows", []() {
         auto result = arf::parse(test_data::simple_table);
         if (!result.has_value()) return false;
         
@@ -445,7 +487,7 @@ void test_query_api(test_suite& suite)
         return count == 3;
     });
     
-    suite.run_test("Recursive iteration includes subcategories", []() {
+    suite.run_test("Table: Recursive iteration includes subcategories", []() {
         auto result = arf::parse(test_data::nested_subcategories);
         if (!result.has_value()) return false;
         
@@ -463,7 +505,7 @@ void test_query_api(test_suite& suite)
         return count == 8;
     });
     
-    suite.run_test("Document order preserves source structure", []() {
+    suite.run_test("Table: Document order preserves source structure", []() {
         auto result = arf::parse(test_data::document_order_test);
         if (!result.has_value()) return false;
         
@@ -483,7 +525,7 @@ void test_query_api(test_suite& suite)
                ids[3] == 4 && ids[4] == 5 && ids[5] == 6;
     });
     
-    suite.run_test("Row provenance tracking", []() {
+    suite.run_test("Table: Row provenance tracking", []() {
         auto result = arf::parse(test_data::nested_subcategories);
         if (!result.has_value()) return false;
         
@@ -932,6 +974,117 @@ items:
 
         if (!is_subsequence(root.all_rows, sub.all_rows)) return false;
         if (!is_subsequence(root.all_rows, deep.all_rows)) return false;
+
+        return true;
+    });
+
+    suite.run_test("table_ref: children are immediate and ordered", []() {
+        const char* src = R"(
+root:
+    # id
+    1
+:a
+    2
+    :a1
+    3
+    /a1
+/a
+:b
+    4
+/b
+/root
+)";
+
+        auto result = arf::parse(src);
+        if (!result.has_value()) return false;
+
+        arf::table_ref table(*result.doc->categories.at("root"));
+        const auto& parts = table.partitions();
+
+        // Expected partitions:
+        // 0 = root
+        // 1 = a
+        // 2 = a1
+        // 3 = b
+        if (parts.size() != 4) return false;
+
+        const auto& root = parts[0];
+
+        // Root must have exactly two children: a, b (not a1)
+        if (root.children.size() != 2) return false;
+
+        const auto* c0 = parts[root.children[0]].cat;
+        const auto* c1 = parts[root.children[1]].cat;
+
+        if (c0->name != "a") return false;
+        if (c1->name != "b") return false;
+
+        return true;
+    });
+
+    suite.run_test("table_ref: non-root all_rows are not depth-first", []() {
+        const char* src = R"(
+root:
+    # id
+    1
+:a
+    2
+/a
+    3
+/root
+)";
+
+        auto result = arf::parse(src);
+        if (!result.has_value()) return false;
+
+        arf::table_ref table(*result.doc->categories.at("root"));
+        const auto& parts = table.partitions();
+
+        const auto& root = parts[0];
+        const auto& a    = parts[1];
+
+        // Root owns all rows
+        if (root.all_rows.size() != 3) return false;
+
+        // a owns only row 2
+        if (a.all_rows.size() != 1) return false;
+        if (a.all_rows[0] != 2) return false;
+
+        return true;
+    });
+
+    suite.run_test("table_ref: rows are owned only by active partition", []() {
+        const char* src = R"(
+root:
+    # id
+    1
+:a
+    2
+/a
+    3
+/root
+)";
+
+        auto result = arf::parse(src);
+        if (!result.has_value()) return false;
+
+        arf::table_ref table(*result.doc->categories.at("root"));
+        const auto& parts = table.partitions();
+
+        const auto& root = parts[0];
+        const auto& a    = parts[1];
+
+        // root direct rows: only row 1
+        if (root.direct_rows.size() != 1) return false;
+        if (root.direct_rows[0] != 1) return false;
+
+        // row 3 must NOT be direct to root
+        for (auto r : root.direct_rows)
+            if (r == 3) return false;
+
+        // a owns only row 2
+        if (a.direct_rows.size() != 1) return false;
+        if (a.direct_rows[0] != 2) return false;
 
         return true;
     });
