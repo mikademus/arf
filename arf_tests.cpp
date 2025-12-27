@@ -5,33 +5,48 @@
 
 #include "include/arf_document.hpp"
 #include <iostream>
+#include <vector>
+#include <string>
 
 using namespace arf;
 
-static int failures = 0;
+struct test_result
+{
+    std::string name;
+    bool passed;
+};
 
-#define EXPECT(cond)                                                     \
-    do                                                                   \
-    {                                                                    \
-        if (!(cond))                                                     \
-        {                                                                \
-            ++failures;                                                  \
-            std::cerr << "FAILED: " << __FILE__ << ":" << __LINE__        \
-                      << " -> " #cond << "\n";                           \
-        }                                                                \
+static std::vector<test_result> results;
+
+#define EXPECT(cond)                                   \
+    do                                                 \
+    {                                                  \
+        if (!(cond))                                   \
+            return false;                              \
     } while (0)
+
+#define RUN_TEST(fn)                                   \
+    do                                                 \
+    {                                                  \
+        bool ok = fn();                                \
+        results.push_back({ #fn, ok });                \
+        std::cout << (ok ? "[PASS] " : "[FAIL] ")      \
+                  << #fn << "\n";                      \
+    } while (0)
+
 
 //------------------------------------------------------------
 
-static void test_root_exists()
+static bool test_root_exists()
 {
     auto doc = load("");
     EXPECT(doc.has_value());
     EXPECT(doc->category_count() >= 1);
     EXPECT(doc->root().has_value());
+    return true;
 }
 
-static void test_simple_category()
+static bool test_simple_category()
 {
     constexpr std::string_view src =
         "category:\n";
@@ -43,9 +58,10 @@ static void test_simple_category()
 
     auto root = doc->root();
     EXPECT(root.has_value());
+    return true;
 }
 
-static void test_nested_categories()
+static bool test_nested_categories()
 {
     constexpr std::string_view src =
         "outer:\n"
@@ -55,9 +71,10 @@ static void test_nested_categories()
     EXPECT(doc.has_value());
 
     EXPECT(doc->category_count() == 3); // root, outer, inner
+    return true;
 }
 
-static void test_category_implicit_closure()
+static bool test_category_implicit_closure()
 {
     constexpr std::string_view src =
         "a:\n"
@@ -69,9 +86,10 @@ static void test_category_implicit_closure()
 
     // root, a, b, c
     EXPECT(doc->category_count() == 4);
+    return true;
 }
 
-static void test_simple_table()
+static bool test_simple_table()
 {
     constexpr std::string_view src =
         "data:\n"
@@ -84,9 +102,10 @@ static void test_simple_table()
 
     EXPECT(doc->table_count() == 1);
     EXPECT(doc->row_count() == 2);
+    return true;
 }
 
-static void test_table_in_subcategory()
+static bool test_table_in_subcategory()
 {
     constexpr std::string_view src =
         "top:\n"
@@ -99,25 +118,130 @@ static void test_table_in_subcategory()
 
     EXPECT(doc->table_count() == 1);
     EXPECT(doc->row_count() == 1);
+    return true;
 }
+
+static bool test_multiple_root_tables()
+{
+    constexpr std::string_view src =
+        "# a b\n"
+        "  1 2\n"
+        "\n"
+        "# x y\n"
+        "  3 4\n";
+
+    auto doc = load(src);
+    EXPECT(doc.has_value());
+
+    EXPECT(doc->table_count() == 2);
+    EXPECT(doc->row_count() == 2);
+
+    auto root = doc->root();
+    EXPECT(root.has_value());
+    EXPECT(root->tables().size() == 2);
+    return true;
+}
+
+static bool test_keys_and_tables_interleaved()
+{
+    constexpr std::string_view src =
+        "top:\n"
+        "    a = 1\n"
+        "    # x y\n"
+        "      2 3\n"
+        "    b = 4\n";
+
+    auto doc = load(src);
+    EXPECT(doc.has_value());
+
+    auto root = doc->root();
+    EXPECT(root.has_value());
+
+    EXPECT(doc->table_count() == 1);
+    EXPECT(doc->row_count() == 1);
+
+    // category access by traversal, not name (yet)
+    EXPECT(doc->category_count() == 2);
+    return true;
+}
+
+static bool test_duplicate_key_rejected()
+{
+    constexpr std::string_view src =
+        "a = 1\n"
+        "a = 2\n";
+
+    auto doc = load(src);
+    EXPECT(!doc.has_value());
+    return true;
+}
+
+static bool test_same_key_in_different_categories_allowed()
+{
+    constexpr std::string_view src =
+        "a = 1\n"
+        "cat:\n"
+        "    a = 2\n";
+
+    auto doc = load(src);
+    EXPECT(doc.has_value());
+    return true;
+}
+
+static bool test_root_and_subcategory_keys()
+{
+    constexpr std::string_view src =
+        "x = 1\n"
+        "c:\n"
+        "    y = 2\n";
+
+    auto doc = load(src);
+    EXPECT(doc.has_value());
+    EXPECT(doc->category_count() == 2);
+    return true;
+}
+
+static bool test_deep_implicit_closure()
+{
+    constexpr std::string_view src =
+        "a:\n"
+        "  :b\n"
+        "    :c\n"
+        "d:\n";
+
+    auto doc = load(src);
+    EXPECT(doc.has_value());
+    EXPECT(doc->category_count() == 5); // root + a + b + c + d
+    return true;
+}
+
 
 //------------------------------------------------------------
 
 int main()
 {
-    test_root_exists();
-    test_simple_category();
-    test_nested_categories();
-    test_category_implicit_closure();
-    test_simple_table();
-    test_table_in_subcategory();
+    RUN_TEST(test_root_exists);
+    RUN_TEST(test_simple_category);
+    RUN_TEST(test_nested_categories);
+    RUN_TEST(test_category_implicit_closure);
+    RUN_TEST(test_simple_table);
+    RUN_TEST(test_table_in_subcategory);
+    RUN_TEST(test_multiple_root_tables);
+    RUN_TEST(test_keys_and_tables_interleaved);
+    RUN_TEST(test_duplicate_key_rejected);
+    RUN_TEST(test_same_key_in_different_categories_allowed);
+    RUN_TEST(test_root_and_subcategory_keys);
+    RUN_TEST(test_deep_implicit_closure);
 
-    if (failures == 0)
-    {
-        std::cout << "All foundation tests passed.\n";
-        return 0;
-    }
+    size_t failed = 0;
+    for (auto& r : results)
+        if (!r.passed)
+            ++failed;
 
-    std::cerr << failures << " test(s) failed.\n";
-    return 1;
+    std::cout << "----------------------------------------\n";
+    std::cout << "Tests run: " << results.size() << "\n";
+    std::cout << "Passed   : " << (results.size() - failed) << "\n";
+    std::cout << "Failed   : " << failed << "\n";
+
+    return failed == 0 ? 0 : 1;
 }
