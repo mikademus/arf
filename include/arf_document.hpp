@@ -18,7 +18,7 @@ namespace arf
     {
         size_t max_depth;
     };    
-    
+
 //========================================================================
 // Forward declarations
 //========================================================================
@@ -434,7 +434,7 @@ namespace arf
     inline std::optional<document> load(std::string_view text)
     {
         auto parsed = parse(text);
-        return materialise(parsed.doc);
+        return materialise(parsed.document);
     }
 
 //========================================================================

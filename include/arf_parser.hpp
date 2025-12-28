@@ -173,7 +173,7 @@ namespace arf
             root.name   = "__root__";
             root.parent = invalid_id<category_tag>();
 
-            ctx.doc.categories.push_back(root);
+            ctx.document.categories.push_back(root);
             category_stack.push_back(root.id);
         }
 
@@ -243,14 +243,14 @@ namespace arf
             if (trimmed.empty())
             {
                 ev.kind = parse_event_kind::empty_line;
-                ctx.doc.events.push_back(ev);
+                ctx.document.events.push_back(ev);
                 return;
             }
 
             if (trimmed.starts_with("//"))
             {
                 ev.kind = parse_event_kind::comment;
-                ctx.doc.events.push_back(ev);
+                ctx.document.events.push_back(ev);
                 return;
             }
 
@@ -291,7 +291,7 @@ namespace arf
             }
 
             ev.kind = parse_event_kind::invalid;
-            ctx.doc.events.push_back(ev);
+            ctx.document.events.push_back(ev);
         }
 
 //---------------------------------------------------------------------------        
@@ -313,13 +313,13 @@ namespace arf
             cat.name   = to_lower(std::string(trim_sv(name)));
             cat.parent = category_stack.back();
 
-            ctx.doc.categories.push_back(cat);
+            ctx.document.categories.push_back(cat);
             category_stack.push_back(cat.id);
 
             ev.kind   = parse_event_kind::category_open;
             ev.target = cat.id;
 
-            ctx.doc.events.push_back(ev);
+            ctx.document.events.push_back(ev);
         }
 
 //---------------------------------------------------------------------------        
@@ -329,7 +329,7 @@ namespace arf
             if (category_stack.size() <= 1)
             {
                 ev.kind = parse_event_kind::invalid;
-                ctx.doc.events.push_back(ev);
+                ctx.document.events.push_back(ev);
                 return;
             }
 
@@ -341,7 +341,7 @@ namespace arf
             ev.kind   = parse_event_kind::category_close;
             ev.target = closing;
 
-            ctx.doc.events.push_back(ev);
+            ctx.document.events.push_back(ev);
         }
 
 //---------------------------------------------------------------------------        
@@ -373,13 +373,13 @@ namespace arf
                 tbl.columns.push_back(col);
             }
 
-            ctx.doc.tables.push_back(tbl);
+            ctx.document.tables.push_back(tbl);
             active_table = tbl.id;
 
             ev.kind   = parse_event_kind::table_header;
             ev.target = tbl.id;
 
-            ctx.doc.events.push_back(ev);
+            ctx.document.events.push_back(ev);
         }
 
 //---------------------------------------------------------------------------        
@@ -390,7 +390,7 @@ namespace arf
             if (cells.empty())
             {
                 ev.kind = parse_event_kind::invalid;
-                ctx.doc.events.push_back(ev);
+                ctx.document.events.push_back(ev);
                 return;
             }
 
@@ -398,7 +398,7 @@ namespace arf
             row.id = next_row_id++;
             row.owning_category = category_stack.back();
 
-            const table& tbl = ctx.doc.tables.at(static_cast<size_t>(active_table));
+            const table& tbl = ctx.document.tables.at(static_cast<size_t>(active_table));
 
             for (size_t i = 0; i < tbl.columns.size(); ++i)
             {
@@ -416,13 +416,13 @@ namespace arf
                 row.cells.push_back(tv);
             }
 
-            ctx.doc.rows.push_back(row);
-            ctx.doc.tables.at(static_cast<size_t>(active_table)).rows.push_back(row.id);
+            ctx.document.rows.push_back(row);
+            ctx.document.tables.at(static_cast<size_t>(active_table)).rows.push_back(row.id);
 
             ev.kind   = parse_event_kind::table_row;
             ev.target = row.id;
 
-            ctx.doc.events.push_back(ev);
+            ctx.document.events.push_back(ev);
         }
 
 //---------------------------------------------------------------------------        
@@ -435,7 +435,7 @@ namespace arf
             if (pos == std::string::npos)
             {
                 ev.kind = parse_event_kind::invalid;
-                ctx.doc.events.push_back(ev);
+                ctx.document.events.push_back(ev);
                 return;
             }
 
@@ -463,12 +463,12 @@ namespace arf
             key.literal       = rhs;
             key.loc           = ev.loc;
 
-            ctx.doc.keys.push_back(std::move(key));
+            ctx.document.keys.push_back(std::move(key));
 
             ev.kind   = parse_event_kind::key_value;
             ev.target = key.owner;
 
-            ctx.doc.events.push_back(ev);
+            ctx.document.events.push_back(ev);
         }
 
     } // anon ns

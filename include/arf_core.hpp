@@ -145,7 +145,7 @@ namespace arf
     template <typename T, typename Error>
     struct context
     {
-        T result;
+        T document;
         std::vector<Error> errors;
 
         bool has_errors() const { return !errors.empty(); }
