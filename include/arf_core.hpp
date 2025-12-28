@@ -9,13 +9,9 @@
 #include <string>
 #include <string_view>
 #include <vector>
-//#include <map>
 #include <variant>
 #include <optional>
-//#include <memory>
-//#include <sstream>
 #include <algorithm>
-#include <concepts>
 
 namespace arf 
 {
@@ -23,7 +19,6 @@ namespace arf
 // Forward declarations and selected aliases
 //========================================================================
 
-    struct document;
     struct category;
 
 //========================================================================
@@ -62,18 +57,12 @@ namespace arf
     using key_id        = id<key_tag>;
 
 //========================================================================
-// Global aliases
-//========================================================================
-
-    using parse_event_target = std::variant<std::monostate, category_id, table_id, table_row_id>;
-
-
-//========================================================================
 // Values
 //========================================================================
     
     enum class value_type
     {
+        unresolved,
         string,
         integer,
         decimal,
@@ -116,38 +105,6 @@ namespace arf
     };
 
 //========================================================================
-// Structure and parsing
-//========================================================================
-    
-    struct source_location
-    {
-        size_t line {0};    // 1-based
-    };
-
-    enum class parse_event_kind
-    {
-        empty_line,
-        comment,
-        invalid,
-
-        key_value,
-        table_header,
-        table_row,
-
-        category_open,
-        category_close
-    };
-
-    struct parse_event
-    {
-        parse_event_kind   kind;
-        source_location    loc;
-        std::string        text;        
-        parse_event_target target; // Optional semantic attachment
-    };    
-
-
-//========================================================================
 // Remaining data structures
 //========================================================================
 
@@ -163,6 +120,7 @@ namespace arf
         std::string     name;
         value_type      type;
         type_ascription type_source;
+        std::optional<std::string> declared_type;
     };
 
     struct table_row
@@ -180,32 +138,18 @@ namespace arf
         std::vector<table_row_id> rows;   // in authored order
     };
 
-    struct document
+//========================================================================
+// Document generation context
+//========================================================================
+
+    template <typename T, typename Error>
+    struct context
     {
-        // Primary spine
-        std::vector<parse_event> events;
+        T result;
+        std::vector<Error> errors;
 
-        // Entities
-        std::vector<category>    categories;
-        std::vector<table>       tables;
-        std::vector<table_row>   rows;
-    };
-
-    struct parse_error
-    {
-        source_location loc;
-        std::string     message;
-        std::string     text;
-    };
-        
-    struct parse_context
-    {
-        document                 doc;
-        std::vector<parse_error> errors;
-
-        bool has_errors() const { return !errors.empty(); }
-    };
-
+        bool has_errors() const;
+    };    
     
 //========================================================================
 // UTILITY FUNCTIONS

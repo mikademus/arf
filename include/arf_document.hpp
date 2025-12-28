@@ -18,15 +18,36 @@ namespace arf
 // Forward declarations
 //========================================================================
 
-    class arf_document;
-    std::optional<arf_document> load(std::string_view text);
-    std::optional<arf_document> materialise(const document& cst);
+    class document;
+    std::optional<document> load(std::string_view text);
+    std::optional<document> materialise(const cst_document& cst);
+
+//========================================================================
+// Document creation errors
+//========================================================================
+
+    enum class semantic_error_kind
+    {
+        type_mismatch,
+        invalid_category_close,
+        duplicate_name,
+        orphan_row,
+        max_depth_exceeded,
+        invalid_table_shape
+    };
+
+    struct semantic_error
+    {
+        semantic_error_kind kind;
+        source_location     loc;
+        std::string         message;
+    };
 
 //========================================================================
 // Authoritative document
 //========================================================================
 
-    class arf_document
+    class document
     {
     public:
         //------------------------------------------------------------------------
@@ -42,7 +63,7 @@ namespace arf
         // Construction
         //------------------------------------------------------------------------
 
-        arf_document() = default;
+        document() = default;
 
         //------------------------------------------------------------------------
         // Category access
@@ -140,16 +161,16 @@ namespace arf
         // View construction helpers
         //------------------------------------------------------------------------
 
-        friend std::optional<arf_document> materialise(const document& cst);
+        friend std::optional<document> materialise(const cst_document& cst);
     };
 
 //========================================================================
 // Views
 //========================================================================
 
-    struct arf_document::category_view
+    struct document::category_view
     {
-        const arf_document* doc;
+        const document* doc;
         const category_node* node;
 
         std::string_view name() const noexcept
@@ -178,9 +199,9 @@ namespace arf
         }
     };
 
-    struct arf_document::table_view
+    struct document::table_view
     {
-        const arf_document* doc;
+        const document* doc;
         const table_node* node;
 
         std::span<const column> columns() const noexcept
@@ -194,9 +215,9 @@ namespace arf
         }
     };
 
-    struct arf_document::table_row_view
+    struct document::table_row_view
     {
-        const arf_document* doc;
+        const document* doc;
         const row_node* node;
 
         std::span<const typed_value> cells() const noexcept
@@ -205,9 +226,9 @@ namespace arf
         }
     };
 
-    struct arf_document::key_view
+    struct document::key_view
     {
-        const arf_document* doc;
+        const document* doc;
         const key_node* node;
 
         const std::string& name() const noexcept
@@ -225,9 +246,9 @@ namespace arf
 // materialise()
 //========================================================================
 
-    inline std::optional<arf_document> materialise(const document& cst)
+    inline std::optional<document> materialise(const cst_document& cst)
     {
-        arf_document doc;
+        document doc;
 
         //========================================================================
         // 1. Copy categories
@@ -236,7 +257,7 @@ namespace arf
         doc.categories_.reserve(cst.categories.size());
         for (auto const& c : cst.categories)
         {
-            arf_document::category_node node;
+            document::category_node node;
             node.id     = c.id;
             node.name   = c.name;
             node.parent = c.parent;
@@ -257,7 +278,7 @@ namespace arf
         doc.tables_.reserve(cst.tables.size());
         for (auto const& t : cst.tables)
         {
-            arf_document::table_node node;
+            document::table_node node;
             node.id      = t.id;
             node.owner   = t.owning_category;
             node.columns = t.columns;
@@ -274,7 +295,7 @@ namespace arf
         doc.rows_.reserve(cst.rows.size());
         for (auto const& r : cst.rows)
         {
-            arf_document::row_node node;
+            document::row_node node;
             node.id    = r.id;
             node.owner = r.owning_category;
             node.cells = r.cells;
@@ -369,7 +390,7 @@ namespace arf
                     // Construct key
                     // ------------------------------------------------------------
 
-                    arf_document::key_node kn;
+                    document::key_node kn;
                     kn.name  = name;
                     kn.owner = current;
                     kn.type  = final_type;
@@ -404,7 +425,7 @@ namespace arf
 // load
 //========================================================================
 
-    inline std::optional<arf_document> load(std::string_view text)
+    inline std::optional<document> load(std::string_view text)
     {
         auto parsed = parse(text);
         return materialise(parsed.doc);
@@ -414,8 +435,8 @@ namespace arf
 // document member implementations
 //========================================================================
 
-    inline std::optional<arf_document::category_view>
-    arf_document::root() const noexcept
+    inline std::optional<document::category_view>
+    document::root() const noexcept
     {
         if (categories_.empty())
             return std::nullopt;
@@ -423,8 +444,8 @@ namespace arf
         return category_view{ this, &categories_.front() };
     }
 
-    inline std::optional<arf_document::category_view>
-    arf_document::category(category_id id) const noexcept
+    inline std::optional<document::category_view>
+    document::category(category_id id) const noexcept
     {
         if (id.val >= categories_.size())
             return std::nullopt;
@@ -432,8 +453,8 @@ namespace arf
         return category_view{ this, &categories_[id.val] };
     }
 
-    inline std::optional<arf_document::table_view>
-    arf_document::table(table_id id) const noexcept
+    inline std::optional<document::table_view>
+    document::table(table_id id) const noexcept
     {
         if (id.val >= tables_.size())
             return std::nullopt;
@@ -441,8 +462,8 @@ namespace arf
         return table_view{ this, &tables_[id.val] };
     }
 
-    inline std::optional<arf_document::table_row_view>
-    arf_document::row(table_row_id id) const noexcept
+    inline std::optional<document::table_row_view>
+    document::row(table_row_id id) const noexcept
     {
         if (id.val >= rows_.size())
             return std::nullopt;
@@ -450,8 +471,8 @@ namespace arf
         return table_row_view{ this, &rows_[id.val] };
     }
 
-    inline std::optional<arf_document::key_view>
-    arf_document::key(key_id id) const noexcept
+    inline std::optional<document::key_view>
+    document::key(key_id id) const noexcept
     {
         if (id.val >= keys_.size())
             return std::nullopt;

@@ -37,6 +37,42 @@ static std::vector<test_result> results;
 
 //------------------------------------------------------------
 
+static bool test_parser_marks_tacit_types_unresolved()
+{
+    constexpr std::string_view src =
+        "a = 42\n"
+        "# x y\n"
+        "  1 2\n";
+
+    auto ctx = parse(src);
+    EXPECT(ctx.errors.empty());
+
+    // Key
+    auto& ev = find_event(ctx, parse_event_kind::key_value);
+    EXPECT(ev.declared_type == std::nullopt);
+    EXPECT(ev.value_type == value_type::unresolved);
+
+    // Columns
+    auto cols = extract_table_columns(ctx);
+    EXPECT(cols[0].type == value_type::unresolved);
+    EXPECT(cols[1].type == value_type::unresolved);
+
+    return true;
+}
+
+static bool test_parser_records_declared_types_without_validation()
+{
+    constexpr std::string_view src =
+        "x:int = hello\n"
+        "# a:float\n"
+        "  world\n";
+
+    auto ctx = parse(src);
+    EXPECT(ctx.errors.empty()); // no semantic checks here
+
+    return true;
+}
+
 static bool test_root_exists()
 {
     auto doc = load("");
@@ -303,11 +339,97 @@ static bool test_declared_table_column()
     return true;
 }
 
+static bool test_declared_key_type_mismatch()
+{
+    constexpr std::string_view src =
+        "x:int = hello\n";
+
+    auto ctx = load(src);
+    EXPECT(ctx.has_errors());
+    return true;
+}
+
+static bool test_declared_column_type_mismatch()
+{
+    constexpr std::string_view src =
+        "# a:int\n"
+        "  hello\n";
+
+    auto ctx = load(src);
+    EXPECT(ctx.has_errors());
+    EXPECT(ctx.errors[0].kind == semantic_error_kind::type_mismatch);
+    return true;
+}
+
+static bool test_named_collapse_closes_multiple_scopes()
+{
+    constexpr std::string_view src =
+        ":a\n"
+        "  :b\n"
+        "    :c\n"
+        "/a\n";
+
+    auto ctx = load(src);
+    EXPECT(!ctx.has_errors());
+    EXPECT(ctx.document.category_count() == 4); // root + a + b + c
+    return true;
+}
+
+static bool test_invalid_named_close_is_error()
+{
+    constexpr std::string_view src =
+        ":a\n"
+        "/b\n";
+
+    auto ctx = load(src);
+    EXPECT(ctx.has_errors());
+    EXPECT(ctx.errors[0].kind == semantic_error_kind::invalid_category_close);
+    return true;
+}
+
+static bool test_malformed_array_survives()
+{
+    constexpr std::string_view src =
+        "a = 1||2|||3\n";
+
+    auto ctx = load(src);
+    EXPECT(!ctx.has_errors());
+
+    auto root = ctx.document.root();
+    auto key  = root->keys()[0];
+
+    auto arr = key.value().as_array<int>();
+    EXPECT(arr.size() == 4);
+    EXPECT(!arr[2].has_value()); // empty element
+    return true;
+}
+
+static bool test_max_nesting_depth_enforced()
+{
+    parse_options opts;
+    opts.max_category_depth = 2;
+
+    constexpr std::string_view src =
+        ":a\n"
+        "  :b\n"
+        "    :c\n";
+
+    auto ctx = load(src, opts);
+    EXPECT(ctx.has_errors());
+    EXPECT(ctx.errors[0].kind == semantic_error_kind::max_depth_exceeded);
+    return true;
+}
+
 
 //------------------------------------------------------------
 
 int main()
 {
+//--Parser tests
+    RUN_TEST(test_parser_marks_tacit_types_unresolved);
+    RUN_TEST(test_parser_records_declared_types_without_validation);
+
+//--Materialiser tests
     RUN_TEST(test_root_exists);
     RUN_TEST(test_simple_category);
     RUN_TEST(test_nested_categories);
@@ -324,6 +446,12 @@ int main()
     RUN_TEST(test_declared_key_type);
     RUN_TEST(test_table_column_inference);
     RUN_TEST(test_declared_table_column);
+    RUN_TEST(test_declared_key_type_mismatch);
+    RUN_TEST(test_declared_column_type_mismatch);
+    RUN_TEST(test_named_collapse_closes_multiple_scopes);
+    RUN_TEST(test_invalid_named_close_is_error);
+    RUN_TEST(test_malformed_array_survives);
+    RUN_TEST(test_max_nesting_depth_enforced);
 
     size_t failed = 0;
     for (auto& r : results)

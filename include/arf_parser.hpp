@@ -13,12 +13,80 @@
 namespace arf 
 {
 //========================================================================
-// PARSER API
+// Structure and parsing
 //========================================================================
     
-    parse_context parse(const std::string& input);
-    parse_context parse(const std::string_view input);
+    enum class parse_event_kind
+    {
+        empty_line,
+        comment,
+        invalid,
+
+        key_value,
+        table_header,
+        table_row,
+
+        category_open,
+        category_close
+    };
+
+    using parse_event_target = std::variant<std::monostate, category_id, table_id, table_row_id>;
+
+    struct source_location
+    {
+        size_t line {0};    // 1-based
+    };
+
+    struct parse_event
+    {
+        parse_event_kind   kind;
+        source_location    loc;
+        std::string        text;        
+        parse_event_target target; // Optional semantic attachment
+    };
     
+//========================================================================
+// PARSER API
+//========================================================================
+
+    struct cst_key
+    {
+        category_id owner;
+        std::string name;
+        std::optional<std::string> declared_type; // raw text after ':'
+        std::string literal;                      // RHS verbatim
+        source_location loc;
+    };
+
+    struct cst_document
+    {
+        // Primary spine
+        std::vector<parse_event> events;
+
+        // Entities
+        std::vector<category>    categories;
+        std::vector<table>       tables;
+        std::vector<table_row>   rows;
+        std::vector<cst_key>     keys;
+    };
+
+    struct parse_error
+    {
+        source_location loc;
+        std::string     message;
+        std::string     text;
+    };
+        
+    struct parse_context
+    {
+        cst_document             doc;
+        std::vector<parse_error> errors;
+
+        bool has_errors() const { return !errors.empty(); }
+    };
+
+    parse_context parse(const std::string& input);
+    parse_context parse(const std::string_view input);    
     
 //========================================================================
 // Implementation details
@@ -45,12 +113,8 @@ namespace arf
 
             std::vector<std::string> split_lines(const std::string& input);
             std::vector<std::string> split_table_cells(std::string_view line);
-            template<typename T, typename F>
-            std::vector<T> split_array(const std::string& str, F converter);
 
             void parse_line(std::string_view line, size_t line_no);
-            value_type parse_type(const std::string& type_str);
-            std::optional<value> parse_value(const std::string& str, value_type type);
 
             void create_root_category();
 
@@ -170,99 +234,6 @@ namespace arf
             }
             
             return cells;
-        }
-
-//---------------------------------------------------------------------------        
-
-        value_type parser_impl::parse_type(const std::string& type_str) 
-        {
-            std::string lower = to_lower(type_str);
-            if (lower == "int") return value_type::integer;
-            if (lower == "float") return value_type::decimal;
-            if (lower == "bool") return value_type::boolean;
-            if (lower == "date") return value_type::date;
-            if (lower == "str[]") return value_type::string_array;
-            if (lower == "int[]") return value_type::int_array;
-            if (lower == "float[]") return value_type::float_array;
-            if (lower == "str") return value_type::string;
-            
-            add_error("key has unknown type \"" + type_str + "\" (defaulting to str)");
-            return value_type::string;
-        }
-
-//---------------------------------------------------------------------------        
-    
-        template<typename T, typename F>
-        std::vector<T> parser_impl::split_array(const std::string& str, F converter) 
-        {
-            std::vector<T> result;
-            std::string current;
-            
-            for (char c : str) 
-            {
-                if (c == '|') 
-                {
-                    if (!current.empty()) 
-                    {
-                        try {
-                            result.push_back(converter(std::string(trim_sv(current))));
-                        } catch (...) {
-                            // Skip invalid array elements
-                        }
-                        current.clear();
-                    }
-                } 
-                else 
-                {
-                    current += c;
-                }
-            }
-            
-            if (!current.empty())
-            {
-                try {
-                    result.push_back(converter(std::string(trim_sv(current))));
-                } catch (...) {
-                    // Skip invalid array elements
-                }
-            }
-            
-            return result;
-        }
-
-//---------------------------------------------------------------------------        
-
-        std::optional<value> parser_impl::parse_value(const std::string& str, value_type type) 
-        {
-            try 
-            {
-                switch (type) 
-                {
-                    case value_type::integer:
-                        return static_cast<int64_t>(std::stoll(str));
-                    case value_type::decimal:
-                        return std::stod(str);
-                    case value_type::boolean:
-                    {
-                        std::string lower = to_lower(str);
-                        return lower == "true" || lower == "yes" || lower == "1";
-                    }
-                    case value_type::date:
-                        return str;
-                    case value_type::string_array:
-                        return split_array<std::string>(str, [](const std::string& s) { return s; });
-                    case value_type::int_array:
-                        return split_array<int64_t>(str, [](const std::string& s) { return std::stoll(s); });
-                    case value_type::float_array:
-                        return split_array<double>(str, [](const std::string& s) { return std::stod(s); });
-                    default:
-                        return str;
-                }
-            }
-            catch (const std::exception&)
-            {
-                return std::nullopt;
-            }
         }
         
 //---------------------------------------------------------------------------        
@@ -384,7 +355,7 @@ namespace arf
         void parser_impl::start_table(std::string_view header, parse_event& ev)
         {
             table tbl;
-            tbl.id             = next_table_id++;
+            tbl.id              = next_table_id++;
             tbl.owning_category = category_stack.back();
 
             auto cols = split_table_cells(header);
@@ -395,13 +366,14 @@ namespace arf
                 if (pos != std::string::npos)
                 {
                     col.name = to_lower(c.substr(0, pos));
-                    col.type = parse_type(c.substr(pos + 1));
+                    col.type = value_type::unresolved;
                     col.type_source = type_ascription::declared;
+                    col.declared_type = std::string(trim_sv(c.substr(pos + 1)));
                 }
                 else
                 {
                     col.name = to_lower(c);
-                    col.type = value_type::string;
+                    col.type = value_type::unresolved;
                     col.type_source = type_ascription::tacit;
                 }
                 tbl.columns.push_back(col);
@@ -437,21 +409,15 @@ namespace arf
             for (size_t i = 0; i < tbl.columns.size(); ++i)
             {
                 typed_value tv;
-                tv.type        = tbl.columns[i].type;
-                tv.type_source = tbl.columns[i].type_source;
-                tv.origin      = value_locus::table_cell;
 
-                if (i < cells.size())
-                {
-                    tv.source_literal = cells[i];
-                    auto parsed = parse_value(cells[i], tv.type);
-                    tv.val = parsed.value_or(std::string{});
-                }
-                else
-                {
-                    tv.source_literal = std::nullopt;
-                    tv.val = std::string{};
-                }
+                tv.type           = value_type::unresolved;
+                tv.type_source    = tbl.columns[i].type_source;
+                tv.origin         = value_locus::table_cell;
+                tv.source_literal =
+                    (i < cells.size())
+                        ? std::string(cells[i])
+                        : std::string{};
+                tv.val = tv.source_literal.has_value() ? *tv.source_literal : std::string{};
 
                 row.cells.push_back(tv);
             }
@@ -471,12 +437,45 @@ namespace arf
         {
             active_table = invalid_id<table_tag>();
 
+            auto pos = ev.text.find('=');
+            if (pos == std::string::npos)
+            {
+                ev.kind = parse_event_kind::invalid;
+                ctx.doc.events.push_back(ev);
+                return;
+            }
+
+            std::string lhs = std::string(trim_sv(ev.text.substr(0, pos)));
+            std::string rhs = std::string(trim_sv(ev.text.substr(pos + 1)));
+
+            std::string name;
+            std::optional<std::string> declared;
+
+            auto type_pos = lhs.find(':');
+            if (type_pos != std::string::npos)
+            {
+                name = to_lower(lhs.substr(0, type_pos));
+                declared = std::string(trim_sv(lhs.substr(type_pos + 1)));
+            }
+            else
+            {
+                name = to_lower(lhs);
+            }
+
+            cst_key key;
+            key.owner         = category_stack.back();
+            key.name          = name;
+            key.declared_type = declared;
+            key.literal       = rhs;
+            key.loc           = ev.loc;
+
+            ctx.doc.keys.push_back(std::move(key));
+
             ev.kind   = parse_event_kind::key_value;
-            ev.target = category_stack.back();
+            ev.target = key.owner;
 
             ctx.doc.events.push_back(ev);
         }
-
 
     } // anon ns
 
