@@ -438,20 +438,23 @@ int main()
     RUN_TEST(test_table_in_subcategory);
     RUN_TEST(test_multiple_root_tables);
     RUN_TEST(test_keys_and_tables_interleaved);
-    RUN_TEST(test_duplicate_key_rejected);
-    RUN_TEST(test_same_key_in_different_categories_allowed);
     RUN_TEST(test_root_and_subcategory_keys);
     RUN_TEST(test_deep_implicit_closure);
-    RUN_TEST(test_key_type_inference);
-    RUN_TEST(test_declared_key_type);
-    RUN_TEST(test_table_column_inference);
-    RUN_TEST(test_declared_table_column);
+
+    RUN_TEST(test_duplicate_key_rejected);
     RUN_TEST(test_declared_key_type_mismatch);
     RUN_TEST(test_declared_column_type_mismatch);
     RUN_TEST(test_named_collapse_closes_multiple_scopes);
     RUN_TEST(test_invalid_named_close_is_error);
-    RUN_TEST(test_malformed_array_survives);
     RUN_TEST(test_max_nesting_depth_enforced);
+    
+    RUN_TEST(test_same_key_in_different_categories_allowed);
+    
+    RUN_TEST(test_key_type_inference);
+    RUN_TEST(test_declared_key_type);
+    RUN_TEST(test_table_column_inference);
+    RUN_TEST(test_declared_table_column);
+    RUN_TEST(test_malformed_array_survives);
 
     size_t failed = 0;
     for (auto& r : results)

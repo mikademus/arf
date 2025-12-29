@@ -1,4 +1,4 @@
-// arf_parser.hpp - A Readable Format (Arf!) - Parser
+// arf_parser.hpp - A Readable Format (Arf!) - Parser raw text to CST document
 // Version 0.3.0
 // Copyright 2025 Mikael Ueno A
 // Licenced as-is under the MIT licence.
@@ -30,12 +30,18 @@ namespace arf
         category_close
     };
 
-    using parse_event_target = std::variant<std::monostate, category_id, table_id, table_row_id>;
+    using unresolved_name = std::string_view;
 
-    struct source_location
-    {
-        size_t line {0};    // 1-based
-    };
+    using parse_event_target = 
+        std::variant
+        <
+            std::monostate,
+            unresolved_name,  
+            category_id, 
+            table_id, 
+            table_row_id
+        >;
+
 
     struct parse_event
     {
@@ -70,14 +76,12 @@ namespace arf
         std::vector<cst_key>     keys;
     };
 
-    struct parse_error
+    enum struct parse_error_kind
     {
-        source_location loc;
-        std::string     message;
-        std::string     text;
+        nothing,
     };
 
-    using parse_context = context<cst_document, parse_error>;
+    using parse_context = context<cst_document, parse_error_kind>;
 
     parse_context parse(const std::string& input);
     parse_context parse(const std::string_view input);    
@@ -157,10 +161,10 @@ namespace arf
 
         void parser_impl::add_error(const std::string& message)
         {
-            ctx.errors.push_back(parse_error{
+            ctx.errors.push_back({
+                parse_error_kind::nothing,
                 { 0 }, // line tracking can be improved later
                 message,
-                {}
             });            
         }
 
@@ -324,8 +328,19 @@ namespace arf
 
 //---------------------------------------------------------------------------        
 
-        void parser_impl::close_category(std::string_view, parse_event& ev)
+        void parser_impl::close_category(std::string_view name, parse_event& ev)
         {
+            ev.kind = parse_event_kind::category_close;
+
+            // Named close: preserve the name as written
+            if (!name.empty())
+            {
+                ev.target = unresolved_name{name};
+                ctx.document.events.push_back(ev);
+                return;
+            }
+
+            // Implicit close: close top of stack
             if (category_stack.size() <= 1)
             {
                 ev.kind = parse_event_kind::invalid;
@@ -338,11 +353,10 @@ namespace arf
 
             active_table = invalid_id<table_tag>();
 
-            ev.kind   = parse_event_kind::category_close;
             ev.target = closing;
-
             ctx.document.events.push_back(ev);
         }
+
 
 //---------------------------------------------------------------------------        
 

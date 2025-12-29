@@ -7,52 +7,13 @@
 #define ARF_DOCUMENT_HPP
 
 #include "arf_core.hpp"
-#include "arf_parser.hpp"
 
 #include <span>
 #include <cassert>
+#include <ranges>
 
 namespace arf
 {
-    struct materialiser_config
-    {
-        size_t max_depth;
-    };    
-
-//========================================================================
-// Forward declarations
-//========================================================================
-
-    class document;
-    std::optional<document> load(std::string_view text);
-    std::optional<document> materialise(const cst_document& cst);
-
-//========================================================================
-// Document creation errors
-//========================================================================
-
-    enum class semantic_error_kind
-    {
-        unknown_type,
-        type_mismatch,
-        invalid_literal,
-        column_arity_mismatch,
-        duplicate_key,
-        invalid_category_close,
-        depth_exceeded
-    };
-
-    struct semantic_error
-    {
-        semantic_error_kind kind;
-        source_location    loc;
-        std::string        message;
-    };
-
-//========================================================================
-// Authoritative document
-//========================================================================
-
     class document
     {
     public:
@@ -117,12 +78,16 @@ namespace arf
 
         std::optional<key_view> key(key_id id) const noexcept;
 
+        category_id create_category(category_id id, std::string_view name, category_id parent);
 
     private:
+
+        category_id create_root();
+
         //------------------------------------------------------------------------
         // Internal storage (fully normalised)
         //------------------------------------------------------------------------
-
+        
         struct category_node
         {
             category_id              id;
@@ -167,7 +132,7 @@ namespace arf
         // View construction helpers
         //------------------------------------------------------------------------
 
-        friend std::optional<document> materialise(const cst_document& cst);
+        friend struct materialiser;
     };
 
 //========================================================================
@@ -248,198 +213,37 @@ namespace arf
         }
     };
 
-//========================================================================
-// materialise()
-//========================================================================
-
-    inline std::optional<document> materialise(const cst_document& cst)
-    {
-        document doc;
-
-        //========================================================================
-        // 1. Copy categories
-        //========================================================================
-
-        doc.categories_.reserve(cst.categories.size());
-        for (auto const& c : cst.categories)
-        {
-            document::category_node node;
-            node.id     = c.id;
-            node.name   = c.name;
-            node.parent = c.parent;
-            doc.categories_.push_back(std::move(node));
-        }
-
-        // Build child lists
-        for (auto const& cat : doc.categories_)
-        {
-            if (cat.parent.val < doc.categories_.size())
-                doc.categories_[cat.parent.val].children.push_back(cat.id);
-        }
-
-        //========================================================================
-        // 2. Copy tables (anonymous, positional)
-        //========================================================================
-
-        doc.tables_.reserve(cst.tables.size());
-        for (auto const& t : cst.tables)
-        {
-            document::table_node node;
-            node.id      = t.id;
-            node.owner   = t.owning_category;
-            node.columns = t.columns;
-            node.rows    = t.rows;
-
-            doc.tables_.push_back(std::move(node));
-            doc.categories_[t.owning_category.val].tables.push_back(t.id);
-        }
-
-        //========================================================================
-        // 3. Copy rows (direct table binding, no scanning)
-        //========================================================================
-
-        doc.rows_.reserve(cst.rows.size());
-        for (auto const& r : cst.rows)
-        {
-            document::row_node node;
-            node.id    = r.id;
-            node.owner = r.owning_category;
-            node.cells = r.cells;
-
-            // Table ownership is already encoded in cst.tables[].rows
-            table_id table {};
-            for (auto const& t : doc.tables_)
-            {
-                if (std::find(t.rows.begin(), t.rows.end(), r.id) != t.rows.end())
-                {
-                    table = t.id;
-                    break;
-                }
-            }
-
-            if (table == table_id{})
-                return std::nullopt; // orphan row → semantic error
-
-            node.table = table;
-            doc.rows_.push_back(std::move(node));
-        }
-
-        //========================================================================
-        // 4. Materialise keys via event walk
-        //========================================================================
-
-        category_id current {0}; // root
-
-        for (auto const& ev : cst.events)
-        {
-            switch (ev.kind)
-            {
-                case parse_event_kind::category_open:
-                    current = std::get<category_id>(ev.target);
-                    break;
-
-                case parse_event_kind::category_close:
-                    current = doc.categories_[current.val].parent;
-                    break;
-
-                case parse_event_kind::key_value:
-                {
-                    auto pos = ev.text.find('=');
-                    if (pos == std::string::npos)
-                        return std::nullopt;
-
-                    std::string lhs = std::string(trim_sv(ev.text.substr(0, pos)));
-                    std::string rhs = std::string(trim_sv(ev.text.substr(pos + 1)));
-
-                    // ------------------------------------------------------------
-                    // Parse name[:type]
-                    // ------------------------------------------------------------
-
-                    std::string name;
-                    std::optional<value_type> declared_type;
-
-                    if (auto type_pos = lhs.find(':'); type_pos != std::string::npos)
-                    {
-                        name = to_lower(lhs.substr(0, type_pos));
-
-                        auto type_sv = trim_sv(lhs.substr(type_pos + 1));
-                        declared_type = parse_declared_type(type_sv);
-                        if (!declared_type)
-                            return std::nullopt; // unknown declared type
-                    }
-                    else
-                    {
-                        name = to_lower(lhs);
-                    }
-
-                    auto& cat = doc.categories_[current];
-
-                    // ------------------------------------------------------------
-                    // Collision check (keys only)
-                    // ------------------------------------------------------------
-
-                    for (auto kid : cat.keys)
-                    {
-                        if (doc.keys_[kid.val].name == name)
-                            return std::nullopt;
-                    }
-
-                    // ------------------------------------------------------------
-                    // Determine type (classification only)
-                    // ------------------------------------------------------------
-
-                    value_type final_type = declared_type
-                        ? *declared_type
-                        : infer_value_type(rhs);
-
-                    // ------------------------------------------------------------
-                    // Construct key
-                    // ------------------------------------------------------------
-
-                    document::key_node kn;
-                    kn.name  = name;
-                    kn.owner = current;
-                    kn.type  = final_type;
-                    kn.type_source = declared_type
-                        ? type_ascription::declared
-                        : type_ascription::tacit;
-
-                    typed_value tv;
-                    tv.type           = kn.type;
-                    tv.type_source    = kn.type_source;
-                    tv.origin         = value_locus::key_value;
-                    tv.source_literal = rhs;
-
-                    kn.value = std::move(tv);
-
-                    key_id kid{ doc.keys_.size() };
-                    doc.keys_.push_back(std::move(kn));
-                    cat.keys.push_back(kid);
-
-                    break;
-                }
-
-                default:
-                    break;
-            }
-        }
-
-        return doc;
-    }
-
-//========================================================================
-// load
-//========================================================================
-
-    inline std::optional<document> load(std::string_view text)
-    {
-        auto parsed = parse(text);
-        return materialise(parsed.document);
-    }
 
 //========================================================================
 // document member implementations
 //========================================================================
+
+    inline category_id document::create_root()
+    {
+        category_node root;
+        root.id     = category_id{0};
+        root.name   = detail::ROOT_CATEGORY_NAME.data();
+        root.parent = invalid_id<category_tag>();
+
+        categories_.push_back(std::move(root));
+        return category_id{0};
+    }    
+
+    inline category_id document::create_category( category_id id, std::string_view name, category_id parent )
+    {
+        category_node node;
+        node.id     = id;
+        node.name   = std::string(name);
+        node.parent = parent;
+
+        categories_.push_back(std::move(node));
+
+        // Link parent → child
+        if (parent.val < categories_.size())
+            categories_[parent.val].children.push_back(id);
+
+        return id;
+    }
 
     inline std::optional<document::category_view>
     document::root() const noexcept

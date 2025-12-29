@@ -142,11 +142,27 @@ namespace arf
 // Document generation context
 //========================================================================
 
-    template <typename T, typename Error>
+    struct source_location
+    {
+        size_t line {0};    // 1-based
+        size_t column {0};  // 1-based
+    };
+
+    template <typename ERROR_KIND>
+    struct error
+    {
+        ERROR_KIND         kind;
+        source_location    loc;
+        std::string        message;
+    };
+
+    template <typename T, typename ERROR_KIND>
     struct context
     {
         T document;
-        std::vector<Error> errors;
+        std::vector<error<ERROR_KIND>> errors;
+
+        T * operator->() { return &document; } 
 
         bool has_errors() const { return !errors.empty(); }
     };    
