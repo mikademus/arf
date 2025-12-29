@@ -7,6 +7,7 @@
 // * Save invalid semantic nodes. They must be accessible for reflection and tooling.
 // * Columns with invalid types must be marked as such. They will collapse to strings and this overwrites the type. That the type was invalid must be preserved.
 // * Cells with invalid type resolutions must be marked as such.
+// * Currently rows of invalid arity are rejected. This data must be preserved.
 
 #ifndef ARF_MATERIALISE_HPP
 #define ARF_MATERIALISE_HPP
@@ -75,7 +76,7 @@ namespace arf
         void handle_category_close(const parse_event& ev);
         void handle_table_header(const parse_event& ev);
         void handle_table_row(const parse_event& ev);        
-        void handle_key(parse_event const& ev);
+        void handle_key(parse_event const& ev);        
     };
 
 
@@ -92,6 +93,20 @@ namespace
 
         return v == expected;
     } 
+
+    std::optional<bool> is_bool(std::string_view s)
+    {
+        static std::unordered_map<std::string_view, bool> booleans = 
+        {
+            {"true", true}, {"false", false},
+            {"yes",  true}, {"no",    false},
+            {"on",   true}, {"off",   false},
+        };
+
+        if (auto it = booleans.find(s); it != booleans.end())
+            return it->second;
+        return std::nullopt;
+    };
 
     inline std::optional<value_type> parse_declared_type(std::string_view s, material_context & out)
     {
@@ -130,17 +145,10 @@ namespace
         tv.source_literal = std::string(s);
         tv.origin = value_locus::key_value;
 
-        static std::unordered_map<std::string_view, bool> booleans = 
-        {
-            {"true", true}, {"false", false},
-            {"yes",  true}, {"no",    false},
-            {"on",   true}, {"off",   false},
-        };
-
-        if (auto it = booleans.find(s); it != booleans.end())
+        if (auto b = is_bool(s); b.has_value())
         {
             tv.type = value_type::boolean;
-            tv.val  = it->second;
+            tv.val  = b.value();
             return tv;
         }
 
@@ -166,7 +174,91 @@ namespace
         tv.val  = std::string(s);
         return tv;
     }    
-}
+
+    inline std::optional<value>
+    try_convert(std::string_view s, value_type t)
+    {
+        switch (t)
+        {
+            case value_type::string:
+                return std::string(s);
+
+            case value_type::integer:
+            {
+                char* end = nullptr;
+                long v = std::strtol(s.data(), &end, 10);
+                if (end != s.data() + s.size())
+                    return std::nullopt;
+                return static_cast<int64_t>(v);
+            }
+
+            case value_type::decimal:
+            {
+                char* end = nullptr;
+                double v = std::strtod(s.data(), &end);
+                if (end != s.data() + s.size())
+                    return std::nullopt;
+                return v;
+            }
+
+            case value_type::boolean:
+                if (auto b = is_bool(s); b.has_value())
+                    return b.value();
+                return std::nullopt;
+
+            case value_type::string_array:
+            case value_type::int_array:
+            case value_type::float_array:
+                // Arrays are handled elsewhere; cell literal stays intact
+                return std::nullopt;
+
+            default:
+                return std::nullopt;
+        }
+    }
+
+    inline typed_value coerce_cell(
+        std::string_view literal,
+        value_type column_type,
+        source_location loc,
+        material_context & ctx
+    )
+    {
+        typed_value tv;
+        tv.origin = value_locus::table_cell;
+        tv.source_literal = std::string(literal);
+
+        // Unresolved or string → accept verbatim
+        if (column_type == value_type::unresolved ||
+            column_type == value_type::string)
+        {
+            tv.type = value_type::string;
+            tv.val  = std::string(literal);
+            return tv;
+        }
+
+        // Attempt strict conversion
+        auto converted = try_convert(literal, column_type); // existing utility
+        if (!converted)
+        {
+            ctx.errors.push_back({
+                semantic_error_kind::type_mismatch,
+                loc,
+                "cell value does not match column type"
+            });
+
+            // Degrade to string
+            tv.type = value_type::string;
+            tv.val  = std::string(literal);
+            return tv;
+        }
+
+        tv.type = column_type;
+        tv.val  = *converted;
+        return tv;
+    }
+
+} // anon ns
 
     inline materialiser::materialiser(const parse_context& ctx,
                                       materialiser_options opts)
@@ -317,11 +409,40 @@ namespace
         const auto& cst_tbl = cst_.tables[tid.val];
 
         document::table_node tbl;
-        tbl.id    = tid;
-        tbl.owner = stack_.back();
+        tbl.id      = tid;
+        tbl.owner   = stack_.back();
         tbl.columns = cst_tbl.columns;
         tbl.rows.clear();
 
+        // Resolve declared column types BEFORE moving
+        for (auto& col : tbl.columns)
+        {
+            if (col.type_source == type_ascription::declared)
+            {
+                auto vt = parse_declared_type(col.declared_type.value(), out_);
+                if (!vt)
+                {
+                    out_.errors.push_back({
+                        semantic_error_kind::invalid_declared_type,
+                        ev.loc,
+                        "unknown declared column type"
+                    });
+
+                    col.type = value_type::string; // collapse
+                    //col.flags.invalid_declared_type = true; // FUTURE
+                }
+                else
+                {
+                    col.type = *vt;
+                }
+            }
+            else
+            {
+                col.type = value_type::unresolved;
+            }
+        }
+
+        // Store the table
         doc_.tables_.push_back(std::move(tbl));
 
         // Attach table to owning category
@@ -330,6 +451,7 @@ namespace
 
         active_table_ = tid;
     }
+
 
     inline void materialiser::handle_table_row(const parse_event& ev)
     {
@@ -355,7 +477,20 @@ namespace
         row.id    = rid;
         row.table = tbl.id;
         row.owner = stack_.back();
-        row.cells = cst_row.cells;
+        row.cells.reserve(tbl.columns.size());
+
+        for (size_t i = 0; i < tbl.columns.size(); ++i)
+        {
+            auto& col = tbl.columns[i];
+
+            std::string_view literal =
+                (i < cst_row.cells.size())
+                    ? std::string_view(cst_row.cells[i].source_literal.value())
+                    : std::string_view{};
+
+            auto tv = coerce_cell(literal, col.type, ev.loc, out_);
+            row.cells.push_back(std::move(tv));
+        }
 
         doc_.rows_.push_back(std::move(row));
         tbl.rows.push_back(rid);

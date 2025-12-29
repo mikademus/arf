@@ -32,7 +32,7 @@ namespace arf::tests
         {                                                  \
             bool ok = fn();                                \
             results.push_back({ #fn, ok });                \
-            std::cout << (ok ? "[PASS] " : "[FAIL] ")      \
+            std::cout << (ok ? "[ ok ] " : "[FAIL] ")      \
                     << #fn;                                \
             if (!ok) std::cout << " FAILED: " << last_error;       \
             std::cout << "\n";                             \
