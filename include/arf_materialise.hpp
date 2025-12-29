@@ -29,6 +29,7 @@ namespace arf
     {
         unknown_type,
         type_mismatch,
+        declared_type_mismatch,
         invalid_literal,
         invalid_declared_type,
         column_arity_mismatch,
@@ -175,8 +176,7 @@ namespace
         return tv;
     }    
 
-    inline std::optional<value>
-    try_convert(std::string_view s, value_type t)
+    inline std::optional<value> try_convert(std::string_view s, value_type t)
     {
         switch (t)
         {
@@ -256,6 +256,65 @@ namespace
         tv.type = column_type;
         tv.val  = *converted;
         return tv;
+    }
+
+    inline typed_value coerce_key_value(
+        std::string_view literal,
+        value_type target,
+        source_location loc,
+        material_context& out
+    )
+    {
+        auto inferred = infer_scalar_value(literal);
+
+        // Failed inference
+        if (!inferred)
+        {
+            out.errors.push_back({
+                semantic_error_kind::invalid_literal,
+                loc,
+                "invalid key literal"
+            });
+
+            return {
+                std::string(literal),
+                value_type::string,
+                type_ascription::tacit,
+                value_locus::key_value
+            };
+        }
+
+        auto tv = *inferred;
+
+        // No declared type or exact match
+        if (target == value_type::unresolved || tv.type == target)
+            return tv;
+
+        // Try coercion (value-only)
+        if (auto v = try_convert(literal, target))
+        {
+            return {
+                std::move(*v),
+                target,
+                type_ascription::declared,
+                value_locus::key_value
+            };
+        }
+
+        // Declared vs actual mismatch
+        out.errors.push_back({
+            semantic_error_kind::declared_type_mismatch,
+            loc,
+            "key value does not match declared type"
+        });
+
+        // Collapse to string, preserve data
+        return {
+            std::string(literal),
+            value_type::string,
+            type_ascription::tacit,
+            value_locus::key_value
+        };
     }
 
 } // anon ns
@@ -507,6 +566,8 @@ namespace
                             ? type_ascription::declared
                             : type_ascription::tacit;
 
+        value_type target = value_type::unresolved;
+
         // 1. Declared type (if any)
         if (cst.declared_type)
         {
@@ -518,38 +579,28 @@ namespace
                     cst.loc,
                     "unknown declared key type"
                 });
-                return;
+
+                // Collapse declared type
+                target        = value_type::string;
+                k.type_source = type_ascription::tacit;
             }
-            k.type = *t;
+            else
+            {
+                target = *t;
+            }
         }
 
-        // 2. Infer value
-        auto v = infer_scalar_value(cst.literal);
-        if (!v)
-        {
-            out_.errors.push_back({
-                semantic_error_kind::invalid_literal,
-                cst.loc,
-                "invalid literal"
-            });
-            return;
-        }
+        // 2. Coerce value (never drops the key)
+        auto tv = coerce_key_value(
+            cst.literal,
+            target,
+            cst.loc,
+            out_
+        );
 
-        // 3. Congruence check
-        if (cst.declared_type && v->type != k.type)
-        {
-            out_.errors.push_back({
-                semantic_error_kind::type_mismatch,
-                cst.loc,
-                "declared type does not match value"
-            });
-            return;
-        }
-
-        if (!cst.declared_type)
-            k.type = v->type;
-
-        k.value = std::move(*v);
+        // 3. Finalise type
+        k.type  = tv.type;
+        k.value = std::move(tv);
 
         key_id id{ doc_.keys_.size() };
         doc_.keys_.push_back(std::move(k));
