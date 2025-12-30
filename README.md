@@ -167,6 +167,18 @@ Supported data types are:
 
 Boolean arrays are currently unsupported. This is a deliberate design choice rather than a technical limitation: without an explicit schema, positional boolean values are typically hard to interpret and offer poor readability. Support may be added if a convincing real-world use case emerges. Similarly, arrays of dates await use cases.
 
+### Lists (arrays)
+
+Values can be expressed in list-format:
+```
+my_array:str[] = foo|bar|baz
+
+# id  arr:int[]
+  1   1|2
+  2   3|4|5|6|7
+```
+Lists must always be type annotated or will be treated as strings.
+
 ### Line comments
 ```
 // familiar from C++, Java, C#, etc.
