@@ -71,13 +71,15 @@ namespace arf
         std::optional<table_id>  active_table_;
         size_t                   key_index_     {0};
 
-
         // Helpers
         void handle_category_open(const parse_event& ev);
         void handle_category_close(const parse_event& ev);
         void handle_table_header(const parse_event& ev);
         void handle_table_row(const parse_event& ev);        
         void handle_key(parse_event const& ev);        
+
+        bool row_is_valid(document::row_node const& r);
+        bool table_is_valid(document::table_node const& t, document const& doc);
     };
 
 
@@ -87,6 +89,22 @@ namespace arf
 
 namespace 
 {
+    inline void split_pipe( std::string_view s, std::vector<std::string_view>& out )
+    {
+        size_t pos = 0;
+        while (true)
+        {
+            size_t next = s.find('|', pos);
+            if (next == std::string_view::npos)
+            {
+                out.push_back(s.substr(pos));
+                break;
+            }
+            out.push_back(s.substr(pos, next - pos));
+            pos = next + 1;
+        }
+    }
+
     inline bool value_matches_type(value_type v, value_type expected)
     {
         if (expected == value_type::unresolved)
@@ -215,6 +233,97 @@ namespace
             default:
                 return std::nullopt;
         }
+    }
+
+    inline value_type array_type_of(value_type scalar)
+    {
+        switch (scalar)
+        {
+            case value_type::string:  return value_type::string_array;
+            case value_type::integer: return value_type::int_array;
+            case value_type::decimal: return value_type::float_array;
+            default:                  return value_type::unresolved;
+        }
+    }
+
+    inline typed_value
+    coerce_array(
+        std::string_view literal,
+        value_type element_type,
+        source_location loc,
+        material_context& out,
+        value_locus locus
+    )
+    {
+        std::vector<std::string_view> parts;
+        split_pipe(literal, parts);
+
+        const value_type array_type = array_type_of(element_type);
+
+        typed_value tv;
+        tv.type        = array_type;
+        tv.type_source = type_ascription::declared;
+        tv.origin      = locus;
+        tv.semantic    = semantic_state::valid;
+
+        tv.val = std::vector<typed_value>{};
+        auto& values = std::get<std::vector<typed_value>>(tv.val);
+        values.reserve(parts.size());
+
+        for (auto part : parts)
+        {
+            auto v = infer_scalar_value(part);
+            if (!v)
+            {
+                tv.semantic = semantic_state::invalid;
+                values.push_back({
+                    std::string(part),
+                    value_type::string,
+                    type_ascription::tacit,
+                    locus,
+                    semantic_state::invalid
+                });
+                continue;
+            }
+
+            if (v->type == element_type)
+            {
+                values.push_back(std::move(*v));
+                continue;
+            }
+
+            if (auto c = try_convert(part, element_type))
+            {
+                typed_value cv;
+                cv.val         = std::move(*c);
+                cv.type        = element_type;
+                cv.type_source = type_ascription::declared;
+                cv.origin      = locus;
+                cv.semantic    = semantic_state::valid;
+                values.push_back(std::move(cv));
+                continue;
+            }
+
+            tv.semantic = semantic_state::invalid;
+            values.push_back({
+                std::string(part),
+                value_type::string,
+                type_ascription::tacit,
+                locus,
+                semantic_state::invalid
+            });
+        }
+
+        if (tv.semantic == semantic_state::invalid)
+        {
+            out.errors.push_back({
+                semantic_error_kind::type_mismatch,
+                loc,
+                "array element does not match declared type"
+            });
+        }
+
+        return tv;
     }
 
     inline typed_value coerce_cell(
@@ -614,6 +723,28 @@ namespace
         doc_.keys_.push_back(std::move(k));
         doc_.categories_[cst.owner.val].keys.push_back(id);
     }
+
+
+    inline bool materialiser::row_is_valid(document::row_node const& r)
+    {
+        for (auto const& c : r.cells)
+            if (c.semantic == semantic_state::invalid)
+                return false;
+        return true;
+    }
+
+    inline bool materialiser::table_is_valid(document::table_node const& t, document const& doc)
+    {
+        for (auto const& c : t.columns)
+            if (c.semantic == semantic_state::invalid)
+                return false;
+
+        for (auto rid : t.rows)
+            if (!row_is_valid(doc.rows_[rid.val]))
+                return false;
+
+        return true;
+    }    
 
     inline material_context materialise(const parse_context& ctx, materialiser_options opts)
     {

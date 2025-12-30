@@ -96,6 +96,7 @@ namespace arf
             std::vector<category_id> children;
             std::vector<table_id>    tables;
             std::vector<key_id>      keys; 
+            semantic_state           semantic = semantic_state::valid;
         };
 
         struct table_node
@@ -104,6 +105,7 @@ namespace arf
             category_id               owner;
             std::vector<column>       columns;
             std::vector<table_row_id> rows;   // authored order
+            semantic_state            semantic = semantic_state::valid;
         };
 
         struct row_node
@@ -112,6 +114,7 @@ namespace arf
             table_id                 table;
             category_id              owner;
             std::vector<typed_value> cells;
+            semantic_state           semantic = semantic_state::valid;
         };
 
         struct key_node
@@ -129,6 +132,9 @@ namespace arf
         std::vector<row_node>      rows_;
         std::vector<key_node>      keys_;
 
+        bool row_is_valid(document::row_node const& r);
+        bool table_is_valid(document::table_node const& t);
+
         //------------------------------------------------------------------------
         // View construction helpers
         //------------------------------------------------------------------------
@@ -145,30 +151,12 @@ namespace arf
         const document* doc;
         const category_node* node;
 
-        std::string_view name() const noexcept
-        {
-            return node->name;
-        }
-
-        bool is_root() const noexcept
-        {
-            return node->parent == category_id{};
-        }
-
-        std::span<const category_id> children() const noexcept
-        {
-            return node->children;
-        }
-
-        std::span<const table_id> tables() const noexcept
-        {
-            return node->tables;
-        }
-
-        std::span<const key_id> keys() const noexcept
-        {
-            return node->keys;
-        }
+        std::string_view name() const noexcept { return node->name; }
+        bool is_root() const noexcept { return node->parent == category_id{}; }
+        std::span<const category_id> children() const noexcept { return node->children; }
+        std::span<const table_id> tables() const noexcept { return node->tables; }
+        std::span<const key_id> keys() const noexcept { return node->keys;}
+        bool is_valid() const noexcept { return node->semantic == semantic_state::valid; }
     };
 
     struct document::table_view
@@ -176,15 +164,9 @@ namespace arf
         const document* doc;
         const table_node* node;
 
-        std::span<const column> columns() const noexcept
-        {
-            return node->columns;
-        }
-
-        std::span<const table_row_id> rows() const noexcept
-        {
-            return node->rows;
-        }
+        std::span<const column> columns() const noexcept { return node->columns; }
+        std::span<const table_row_id> rows() const noexcept { return node->rows; }
+        bool is_valid() const noexcept { return node->semantic == semantic_state::valid; }
     };
 
     struct document::table_row_view
@@ -192,10 +174,8 @@ namespace arf
         const document* doc;
         const row_node* node;
 
-        std::span<const typed_value> cells() const noexcept
-        {
-            return node->cells;
-        }
+        std::span<const typed_value> cells() const noexcept { return node->cells; }
+        bool is_valid() const noexcept { return node->semantic == semantic_state::valid; }
     };
 
     struct document::key_view
@@ -203,15 +183,9 @@ namespace arf
         const document* doc;
         const key_node* node;
 
-        const std::string& name() const noexcept
-        {
-            return node->name;
-        }
-
-        const typed_value& value() const noexcept
-        {
-            return node->value;
-        }
+        const std::string& name() const noexcept { return node->name; }
+        const typed_value& value() const noexcept { return node->value; }
+        bool is_valid() const noexcept { return node->semantic == semantic_state::valid; }
     };
 
 

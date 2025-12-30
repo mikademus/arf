@@ -187,6 +187,143 @@ static bool invalid_cell_is_flagged()
     return true;
 }
 
+static bool invalid_column_marks_rows_invalid_not_table()
+{
+    constexpr std::string_view src =
+        "# a:int\n"
+        "  hello\n";
+
+    auto ctx = load(src);
+    auto doc = ctx.document;
+
+    auto tbl = doc.table(table_id{0});
+    EXPECT(tbl.has_value(), "there is no table");
+    EXPECT(!tbl->is_valid(), "table is valid though a column is invalid"); // column invalid → table invalid
+
+    auto row = doc.row(table_row_id{0});
+    EXPECT(row.has_value(), "there is no table");
+    EXPECT(!row->is_valid(), "the row is valid though a cell is invalid");
+
+    return true;
+}
+
+static bool invalid_cell_is_flagged_from_view()
+{
+    constexpr std::string_view src =
+        "# a:int\n"
+        "  42\n"
+        "  nope\n";
+
+    auto ctx = load(src);
+    auto doc = ctx.document;
+
+    auto row0 = doc.row(table_row_id{0});
+    auto row1 = doc.row(table_row_id{1});
+
+    EXPECT(row0->is_valid(), "valid row was rejected");
+    EXPECT(!row1->is_valid(), "invalid row was accepted");
+
+    return true;
+}
+
+static bool key_array_valid_elements()
+{
+    constexpr std::string_view src =
+        "arr:int[] = 1|2|3\n";
+
+    auto ctx = load(src);
+    auto doc = ctx.document;
+
+    auto key = doc.key(key_id{0});
+    EXPECT(key.has_value(), "missing key");
+    EXPECT(key->is_valid(), "valid array key rejected");
+
+    return true;
+}
+
+static bool key_array_invalid_element_marks_key_invalid()
+{
+    constexpr std::string_view src =
+        "arr:int[] = 1|nope|3\n";
+
+    auto ctx = load(src);
+    auto doc = ctx.document;
+
+    auto key = doc.key(key_id{0});
+    EXPECT(key.has_value(), "missing key");
+    EXPECT(!key->is_valid(), "invalid array element did not invalidate key");
+
+    return true;
+}
+
+static bool key_array_without_annotation_collapses_to_string()
+{
+    constexpr std::string_view src =
+        "arr = 1|2|3\n";
+
+    auto ctx = load(src);
+    auto doc = ctx.document;
+
+    auto key = doc.key(key_id{0});
+    EXPECT(key.has_value(), "missing key");
+    EXPECT(key->value().type == value_type::string, "unannotated array literal was not treated as string");
+
+    return true;
+}
+
+static bool table_array_cells_valid()
+{
+    constexpr std::string_view src =
+        "# id  vals:int[]\n"
+        "  1   1|2|3\n"
+        "  2   4|5\n";
+
+    auto ctx = load(src);
+    auto doc = ctx.document;
+
+    auto row0 = doc.row(table_row_id{0});
+    auto row1 = doc.row(table_row_id{1});
+
+    EXPECT(row0->is_valid(), "valid row rejected");
+    EXPECT(row1->is_valid(), "valid row rejected");
+
+    return true;
+}
+
+static bool table_array_cell_invalid_element_marks_row_invalid()
+{
+    constexpr std::string_view src =
+        "# id  vals:int[]\n"
+        "  1   1|2|nope\n"
+        "  2   3|4\n";
+
+    auto ctx = load(src);
+    auto doc = ctx.document;
+
+    auto row0 = doc.row(table_row_id{0});
+    auto row1 = doc.row(table_row_id{1});
+
+    EXPECT(!row0->is_valid(), "row with invalid array element accepted");
+    EXPECT(row1->is_valid(), "valid row rejected");
+
+    return true;
+}
+
+static bool array_allows_empty_elements()
+{
+    constexpr std::string_view src =
+        "arr:str[] = a||b|\n";
+
+    auto ctx = load(src);
+    auto doc = ctx.document;
+
+    auto key = doc.key(key_id{0});
+    EXPECT(key.has_value(), "missing key");
+    EXPECT(key->is_valid(), "empty array elements should not invalidate string array");
+
+    return true;
+}
+
 
 //----------------------------------------------------------------------------
 
@@ -202,8 +339,16 @@ inline void run_materialiser_tests()
     RUN_TEST(invalid_declared_key_type_is_error);
     RUN_TEST(invalid_declared_column_type_is_error);
     RUN_TEST(invalid_key_is_flagged);
-    RUN_TEST(invalid_column_is_flagged);    
-    RUN_TEST(invalid_cell_is_flagged);    
+    RUN_TEST(invalid_column_is_flagged);
+    RUN_TEST(invalid_cell_is_flagged);  
+    RUN_TEST(invalid_column_marks_rows_invalid_not_table);
+    RUN_TEST(invalid_cell_is_flagged_from_view);
+    RUN_TEST(key_array_valid_elements);
+    RUN_TEST(key_array_invalid_element_marks_key_invalid);
+    RUN_TEST(key_array_without_annotation_collapses_to_string);
+    RUN_TEST(table_array_cells_valid);
+    RUN_TEST(table_array_cell_invalid_element_marks_row_invalid);
+    RUN_TEST(array_allows_empty_elements);
 }
 
 }
