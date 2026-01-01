@@ -32,6 +32,7 @@ namespace arf
         declared_type_mismatch,
         invalid_literal,
         invalid_declared_type,
+        invalid_array_element, 
         column_arity_mismatch,
         duplicate_key,
         invalid_category_close,
@@ -89,6 +90,8 @@ namespace arf
 
 namespace 
 {
+    using error_sink = decltype(material_context::errors);
+
     inline void split_pipe( std::string_view s, std::vector<std::string_view>& out )
     {
         size_t pos = 0;
@@ -194,8 +197,22 @@ namespace
         return tv;
     }    
 
-    inline std::optional<value> try_convert(std::string_view s, value_type t)
+    inline std::optional<value> try_convert(std::string_view s, value_type t, source_location loc, error_sink & err)
     {
+        auto log_err = [&err, loc, s, t]()
+        {
+            std::string msg("could not convert ");
+            msg += s;
+            msg += " to ";
+            msg += type_to_string(t);
+
+            err.push_back({
+                semantic_error_kind::type_mismatch,
+                loc,
+                msg
+            });
+        };
+
         switch (t)
         {
             case value_type::string:
@@ -206,7 +223,10 @@ namespace
                 char* end = nullptr;
                 long v = std::strtol(s.data(), &end, 10);
                 if (end != s.data() + s.size())
+                {
+                    log_err();
                     return std::nullopt;
+                }
                 return static_cast<int64_t>(v);
             }
 
@@ -215,13 +235,17 @@ namespace
                 char* end = nullptr;
                 double v = std::strtod(s.data(), &end);
                 if (end != s.data() + s.size())
+                {
+                    log_err();
                     return std::nullopt;
+                }
                 return v;
             }
 
             case value_type::boolean:
                 if (auto b = is_bool(s); b.has_value())
                     return b.value();
+                log_err();
                 return std::nullopt;
 
             case value_type::string_array:
@@ -246,80 +270,131 @@ namespace
         }
     }
 
-    inline typed_value
-    coerce_array(
+    inline bool array_has_invalid_elements(const typed_value& tv)
+    {
+        if (!std::holds_alternative<std::vector<typed_value>>(tv.val))
+            return false;
+
+        auto const& elems = std::get<std::vector<typed_value>>(tv.val);
+        for (auto const& e : elems)
+            if (e.semantic == semantic_state::invalid)
+                return true;
+
+        return false;
+    }
+
+    inline typed_value coerce_array(
         std::string_view literal,
-        value_type element_type,
+        value_type declared_type,
         source_location loc,
-        material_context& out,
-        value_locus locus
+        material_context& ctx
     )
     {
-        std::vector<std::string_view> parts;
-        split_pipe(literal, parts);
-
-        const value_type array_type = array_type_of(element_type);
-
         typed_value tv;
-        tv.type        = array_type;
+        tv.type        = declared_type;
         tv.type_source = type_ascription::declared;
-        tv.origin      = locus;
+        tv.origin      = value_locus::table_cell;
         tv.semantic    = semantic_state::valid;
 
+        // All arrays are now vector<typed_value>
         tv.val = std::vector<typed_value>{};
         auto& values = std::get<std::vector<typed_value>>(tv.val);
-        values.reserve(parts.size());
 
-        for (auto part : parts)
+        const bool want_int   = declared_type == value_type::int_array;
+        const bool want_float = declared_type == value_type::float_array;
+        const bool want_str   = declared_type == value_type::string_array;
+
+        bool array_invalid = false;
+
+        size_t pos = 0;
+        while (pos <= literal.size())
         {
-            auto v = infer_scalar_value(part);
-            if (!v)
+            const size_t next = literal.find('|', pos);
+            const size_t len =
+                (next == std::string_view::npos)
+                    ? literal.size() - pos
+                    : next - pos;
+
+            std::string_view part = literal.substr(pos, len);
+
+            typed_value elem;
+            elem.origin = value_locus::table_cell;
+            elem.source_literal = std::string(part);
+
+            // Empty element: preserved, missing but not invalid
+            if (part.empty())
             {
-                tv.semantic = semantic_state::invalid;
-                values.push_back({
-                    std::string(part),
-                    value_type::string,
-                    type_ascription::tacit,
-                    locus,
-                    semantic_state::invalid
-                });
-                continue;
+                elem.type        = value_type::unresolved;
+                elem.val         = std::monostate{};
+                elem.type_source = type_ascription::tacit;
+                elem.semantic    = semantic_state::valid;
+            }
+            else if (want_int)
+            {
+                if (auto v = try_convert(part, value_type::integer, loc, ctx.errors); v.has_value())
+                {
+                    elem.val         = std::get<int64_t>(*v);
+                    elem.type        = value_type::integer;
+                    elem.type_source = type_ascription::declared;
+                }
+                else
+                {
+                    elem.val         = std::string(part);
+                    elem.type        = value_type::string;
+                    elem.type_source = type_ascription::tacit;
+                    elem.semantic    = semantic_state::invalid;
+                    array_invalid    = true;
+                }
+            }
+            else if (want_float)
+            {
+                if (auto v = try_convert(part, value_type::decimal, loc, ctx.errors); v.has_value())
+                {
+                    elem.val         = std::get<double>(*v);
+                    elem.type        = value_type::decimal;
+                    elem.type_source = type_ascription::declared;
+                }
+                else
+                {
+                    elem.val         = std::string(part);
+                    elem.type        = value_type::string;
+                    elem.type_source = type_ascription::tacit;
+                    elem.semantic    = semantic_state::invalid;
+                    array_invalid    = true;
+                }
+            }
+            else if (want_str)
+            {
+                elem.val         = std::string(part);
+                elem.type        = value_type::string;
+                elem.type_source = type_ascription::declared;
+            }
+            else
+            {
+                // Defensive: unresolved array type
+                elem.val         = std::string(part);
+                elem.type        = value_type::string;
+                elem.type_source = type_ascription::tacit;
+                elem.semantic    = semantic_state::invalid;
+                array_invalid    = true;
             }
 
-            if (v->type == element_type)
-            {
-                values.push_back(std::move(*v));
-                continue;
-            }
+            values.push_back(std::move(elem));
 
-            if (auto c = try_convert(part, element_type))
-            {
-                typed_value cv;
-                cv.val         = std::move(*c);
-                cv.type        = element_type;
-                cv.type_source = type_ascription::declared;
-                cv.origin      = locus;
-                cv.semantic    = semantic_state::valid;
-                values.push_back(std::move(cv));
-                continue;
-            }
+            if (next == std::string_view::npos)
+                break;
 
-            tv.semantic = semantic_state::invalid;
-            values.push_back({
-                std::string(part),
-                value_type::string,
-                type_ascription::tacit,
-                locus,
-                semantic_state::invalid
-            });
+            pos = next + 1;
         }
 
-        if (tv.semantic == semantic_state::invalid)
+        if (array_invalid)
         {
-            out.errors.push_back({
-                semantic_error_kind::type_mismatch,
+            tv.semantic = semantic_state::invalid;
+
+            ctx.errors.push_back({
+                semantic_error_kind::invalid_array_element,
                 loc,
-                "array element does not match declared type"
+                "one or more array elements are invalid"
             });
         }
 
@@ -347,14 +422,14 @@ namespace
         }
 
         // Attempt strict conversion
-        auto converted = try_convert(literal, column_type); // existing utility
+        auto converted = try_convert(literal, column_type, loc, ctx.errors);
         if (!converted)
         {
-            ctx.errors.push_back({
-                semantic_error_kind::type_mismatch,
-                loc,
-                "cell value does not match column type"
-            });
+            //ctx.errors.push_back({
+            //    semantic_error_kind::type_mismatch,
+            //    loc,
+            //    "cell value does not match column type"
+            //});
 
             // Degrade to string
             tv.type     = value_type::string;
@@ -401,7 +476,7 @@ namespace
             return tv;
 
         // Try coercion (value-only)
-        if (auto v = try_convert(literal, target))
+        if (auto v = try_convert(literal, target, loc, out.errors))
         {
             return {
                 std::move(*v),
@@ -600,12 +675,16 @@ namespace
 
                     col.type = value_type::string; // collapse
                     col.semantic = semantic_state::invalid;
+                    tbl.contamination = contamination_state::contaminated;
                 }
                 else
                 {
                     col.type = *vt;
                     if (s == "date")
+                    {
                         col.semantic = semantic_state::invalid;
+                        tbl.contamination = contamination_state::contaminated;
+                    }
                 }
             }
             else
@@ -649,7 +728,17 @@ namespace
         row.id    = rid;
         row.table = tbl.id;
         row.owner = stack_.back();
+        row.semantic = semantic_state::valid;
+        row.contamination = contamination_state::clean;        
         row.cells.reserve(tbl.columns.size());
+
+        // Column invalidity contaminates the row
+        for (auto const& col : tbl.columns)
+            if (col.semantic == semantic_state::invalid)
+            {
+                row.contamination = contamination_state::contaminated;
+                break;
+            }
 
         for (size_t i = 0; i < tbl.columns.size(); ++i)
         {
@@ -660,12 +749,53 @@ namespace
                     ? std::string_view(cst_row.cells[i].source_literal.value())
                     : std::string_view{};
 
-            auto tv = coerce_cell(literal, col.type, ev.loc, out_);
+            typed_value tv;
+
+            if (col.type == value_type::string_array ||
+                col.type == value_type::int_array ||
+                col.type == value_type::float_array)
+            {
+                tv = coerce_array(literal, col.type, ev.loc, out_);
+            }
+            else
+            {
+                tv = coerce_cell(literal, col.type, ev.loc, out_);
+            }
+
             row.cells.push_back(std::move(tv));
+        }
+
+        // Column invalidity contaminates the row
+        for (auto const& col : tbl.columns)
+        {
+            if (col.semantic == semantic_state::invalid)
+            {
+                row.contamination = contamination_state::contaminated;
+                break;
+            }
+        }
+
+        // Cell or array invalidity contaminates the row
+        for (auto const& c : row.cells)
+        {
+            if (c.semantic == semantic_state::invalid)
+            {
+                row.contamination = contamination_state::contaminated;
+                break;
+            }
+
+            if (array_has_invalid_elements(c))
+            {
+                row.contamination = contamination_state::contaminated;
+                break;
+            }
         }
 
         doc_.rows_.push_back(std::move(row));
         tbl.rows.push_back(rid);
+
+        if (row.contamination == contamination_state::contaminated)
+            tbl.contamination = contamination_state::contaminated;
     }
 
     inline void materialiser::handle_key(parse_event const&)
@@ -705,12 +835,18 @@ namespace
         }
 
         // 2. Coerce value (never drops the key)
-        auto tv = coerce_key_value(
-            cst.literal,
-            target,
-            cst.loc,
-            out_
-        );
+        typed_value tv;
+
+        if (target == value_type::string_array ||
+            target == value_type::int_array ||
+            target == value_type::float_array)
+        {
+            tv = coerce_array(cst.literal, target, cst.loc, out_);
+        }
+        else
+        {
+            tv = coerce_key_value(cst.literal, target, cst.loc, out_);
+        }
 
         if (tv.semantic == semantic_state::invalid)
             k.semantic = semantic_state::invalid;

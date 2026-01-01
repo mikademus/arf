@@ -67,6 +67,13 @@ namespace arf
         invalid
     };
 
+    enum class contamination_state : uint8_t
+    {
+        clean,
+        contaminated
+    };
+
+
     enum class value_type
     {
         unresolved,
@@ -92,14 +99,15 @@ namespace arf
         table_cell  // declared inside a table row
     };
 
+    struct typed_value;
+
     using value = std::variant<
+        std::monostate,
         std::string,
         int64_t,
         double,
         bool,
-        std::vector<std::string>,
-        std::vector<int64_t>,
-        std::vector<double>
+        std::vector<typed_value>
     >;
 
     struct typed_value
@@ -214,42 +222,6 @@ namespace arf
             std::string result = s;
             std::transform(result.begin(), result.end(), result.begin(), ::tolower);
             return result;
-        }
-        
-        inline value_type infer_value_type(std::string_view sv)
-        {
-            auto s = trim_sv(sv);
-            if (s.empty())
-                return value_type::string;
-
-            // boolean
-            {
-                auto l = to_lower(std::string(s));
-                if (l == "true" || l == "false" || l == "yes" || l == "no" || l == "0" || l == "1")
-                    return value_type::boolean;
-            }
-
-            // integer
-            {
-                char* end = nullptr;
-                std::strtoll(s.data(), &end, 10);
-                if (end == s.data() + s.size())
-                    return value_type::integer;
-            }
-
-            // decimal
-            {
-                char* end = nullptr;
-                std::strtod(s.data(), &end);
-                if (end == s.data() + s.size())
-                    return value_type::decimal;
-            }
-
-            // array (very conservative)
-            if (s.find('|') != std::string_view::npos)
-                return value_type::string_array;
-
-            return value_type::string;
         }
 
         inline std::optional<value_type>

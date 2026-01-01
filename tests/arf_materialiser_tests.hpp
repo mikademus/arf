@@ -198,11 +198,13 @@ static bool invalid_column_marks_rows_invalid_not_table()
 
     auto tbl = doc.table(table_id{0});
     EXPECT(tbl.has_value(), "there is no table");
-    EXPECT(!tbl->is_valid(), "table is valid though a column is invalid"); // column invalid → table invalid
+    EXPECT(tbl->is_contaminated(), "table should be contaminated by invalid column");
+    EXPECT(tbl->is_locally_valid(), "table itself is not misformed"); 
 
     auto row = doc.row(table_row_id{0});
-    EXPECT(row.has_value(), "there is no table");
-    EXPECT(!row->is_valid(), "the row is valid though a cell is invalid");
+    EXPECT(row.has_value(), "there is no row");
+    EXPECT(row->is_contaminated(), "row should be contaminated by invalid column");
+    EXPECT(row->is_locally_valid(), "row itself is not malformed");    
 
     return true;
 }
@@ -220,8 +222,11 @@ static bool invalid_cell_is_flagged_from_view()
     auto row0 = doc.row(table_row_id{0});
     auto row1 = doc.row(table_row_id{1});
 
-    EXPECT(row0->is_valid(), "valid row was rejected");
-    EXPECT(!row1->is_valid(), "invalid row was accepted");
+    EXPECT(!row0->is_contaminated(), "row should not be in contaminated state");
+    EXPECT(row0->is_locally_valid(), "row should be structurally valid");
+
+    EXPECT(row1->is_contaminated(), "row should be in contaminated state");
+    EXPECT(row1->is_locally_valid(), "row should be structurally valid");
 
     return true;
 }
@@ -284,13 +289,13 @@ static bool table_array_cells_valid()
     auto row0 = doc.row(table_row_id{0});
     auto row1 = doc.row(table_row_id{1});
 
-    EXPECT(row0->is_valid(), "valid row rejected");
-    EXPECT(row1->is_valid(), "valid row rejected");
+    EXPECT(row0->is_locally_valid(), "valid row rejected");
+    EXPECT(row1->is_locally_valid(), "valid row rejected");
 
     return true;
 }
 
-static bool table_array_cell_invalid_element_marks_row_invalid()
+static bool table_array_cell_invalid_element_contaminates_row()
 {
     constexpr std::string_view src =
         "# id  vals:int[]\n"
@@ -303,8 +308,11 @@ static bool table_array_cell_invalid_element_marks_row_invalid()
     auto row0 = doc.row(table_row_id{0});
     auto row1 = doc.row(table_row_id{1});
 
-    EXPECT(!row0->is_valid(), "row with invalid array element accepted");
-    EXPECT(row1->is_valid(), "valid row rejected");
+    EXPECT(row0->is_locally_valid(), "dirty row should be structurally valid");
+    EXPECT(row0->is_contaminated(), "dirty row should be in contaimnated state");
+
+    EXPECT(row1->is_locally_valid(), "clean row should be structurally valid");
+    EXPECT(!row1->is_contaminated(), "clean row should not be in contaimnated state");
 
     return true;
 }
@@ -347,7 +355,7 @@ inline void run_materialiser_tests()
     RUN_TEST(key_array_invalid_element_marks_key_invalid);
     RUN_TEST(key_array_without_annotation_collapses_to_string);
     RUN_TEST(table_array_cells_valid);
-    RUN_TEST(table_array_cell_invalid_element_marks_row_invalid);
+    RUN_TEST(table_array_cell_invalid_element_contaminates_row);
     RUN_TEST(array_allows_empty_elements);
 }
 

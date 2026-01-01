@@ -96,7 +96,8 @@ namespace arf
             std::vector<category_id> children;
             std::vector<table_id>    tables;
             std::vector<key_id>      keys; 
-            semantic_state           semantic = semantic_state::valid;
+            semantic_state           semantic      {semantic_state::valid};
+            contamination_state      contamination {contamination_state::clean};
         };
 
         struct table_node
@@ -105,7 +106,8 @@ namespace arf
             category_id               owner;
             std::vector<column>       columns;
             std::vector<table_row_id> rows;   // authored order
-            semantic_state            semantic = semantic_state::valid;
+            semantic_state            semantic      {semantic_state::valid};
+            contamination_state       contamination {contamination_state::clean};
         };
 
         struct row_node
@@ -114,7 +116,8 @@ namespace arf
             table_id                 table;
             category_id              owner;
             std::vector<typed_value> cells;
-            semantic_state           semantic = semantic_state::valid;
+            semantic_state           semantic      {semantic_state::valid};
+            contamination_state      contamination {contamination_state::clean};
         };
 
         struct key_node
@@ -156,7 +159,8 @@ namespace arf
         std::span<const category_id> children() const noexcept { return node->children; }
         std::span<const table_id> tables() const noexcept { return node->tables; }
         std::span<const key_id> keys() const noexcept { return node->keys;}
-        bool is_valid() const noexcept { return node->semantic == semantic_state::valid; }
+        bool is_locally_valid() const noexcept { return node->semantic == semantic_state::valid; }
+        bool is_contaminated() const noexcept { return node->contamination == contamination_state::contaminated; }
     };
 
     struct document::table_view
@@ -166,7 +170,8 @@ namespace arf
 
         std::span<const column> columns() const noexcept { return node->columns; }
         std::span<const table_row_id> rows() const noexcept { return node->rows; }
-        bool is_valid() const noexcept { return node->semantic == semantic_state::valid; }
+        bool is_locally_valid() const noexcept { return node->semantic == semantic_state::valid; }
+        bool is_contaminated() const noexcept { return node->contamination == contamination_state::contaminated; }
     };
 
     struct document::table_row_view
@@ -175,7 +180,8 @@ namespace arf
         const row_node* node;
 
         std::span<const typed_value> cells() const noexcept { return node->cells; }
-        bool is_valid() const noexcept { return node->semantic == semantic_state::valid; }
+        bool is_locally_valid() const noexcept { return node->semantic == semantic_state::valid; }
+        bool is_contaminated() const noexcept { return node->contamination == contamination_state::contaminated; }
     };
 
     struct document::key_view
