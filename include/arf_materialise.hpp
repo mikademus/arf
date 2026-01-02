@@ -17,9 +17,14 @@
 #include "arf_document.hpp"
 #include <unordered_map>
 
+#include <iostream>
 
 namespace arf
 {
+    //#define TRACE_CONTAM(where, x) \
+    //    std::cout << where << ": semantic=" << int(x.semantic) \
+    //            << " contam=" << int(x.contamination) << "\n";
+                    
     struct materialiser_options
     {
         size_t max_category_depth = 64;
@@ -286,6 +291,7 @@ namespace
     inline typed_value coerce_array(
         std::string_view literal,
         value_type declared_type,
+        value_locus origin,
         source_location loc,
         material_context& ctx
     )
@@ -293,7 +299,7 @@ namespace
         typed_value tv;
         tv.type        = declared_type;
         tv.type_source = type_ascription::declared;
-        tv.origin      = value_locus::table_cell;
+        tv.origin      = origin;
         tv.semantic    = semantic_state::valid;
 
         // All arrays are now vector<typed_value>
@@ -304,10 +310,10 @@ namespace
         const bool want_float = declared_type == value_type::float_array;
         const bool want_str   = declared_type == value_type::string_array;
 
-        bool array_invalid = false;
+        bool array_contaminated = false;
 
         size_t pos = 0;
-        while (pos <= literal.size())
+        while (pos < literal.size())
         {
             const size_t next = literal.find('|', pos);
             const size_t len =
@@ -318,65 +324,72 @@ namespace
             std::string_view part = literal.substr(pos, len);
 
             typed_value elem;
-            elem.origin = value_locus::table_cell;
+            elem.origin = origin;
             elem.source_literal = std::string(part);
 
             // Empty element: preserved, missing but not invalid
             if (part.empty())
             {
-                elem.type        = value_type::unresolved;
-                elem.val         = std::monostate{};
-                elem.type_source = type_ascription::tacit;
-                elem.semantic    = semantic_state::valid;
+                elem.type          = value_type::unresolved;
+                elem.val           = std::monostate{};
+                elem.type_source   = type_ascription::tacit;
+                elem.semantic      = semantic_state::valid;
+                elem.contamination = contamination_state::clean;
             }
             else if (want_int)
             {
                 if (auto v = try_convert(part, value_type::integer, loc, ctx.errors); v.has_value())
                 {
-                    elem.val         = std::get<int64_t>(*v);
-                    elem.type        = value_type::integer;
-                    elem.type_source = type_ascription::declared;
+                    elem.val           = std::get<int64_t>(*v);
+                    elem.type          = value_type::integer;
+                    elem.type_source   = type_ascription::declared;
+                    elem.contamination = contamination_state::clean;
                 }
                 else
                 {
-                    elem.val         = std::string(part);
-                    elem.type        = value_type::string;
-                    elem.type_source = type_ascription::tacit;
-                    elem.semantic    = semantic_state::invalid;
-                    array_invalid    = true;
+                    elem.val           = std::string(part);
+                    elem.type          = value_type::string;
+                    elem.type_source   = type_ascription::tacit;
+                    elem.semantic      = semantic_state::invalid;
+                    elem.contamination = contamination_state::clean;
+                    array_contaminated = true;
                 }
             }
             else if (want_float)
             {
                 if (auto v = try_convert(part, value_type::decimal, loc, ctx.errors); v.has_value())
                 {
-                    elem.val         = std::get<double>(*v);
-                    elem.type        = value_type::decimal;
-                    elem.type_source = type_ascription::declared;
+                    elem.val           = std::get<double>(*v);
+                    elem.type          = value_type::decimal;
+                    elem.type_source   = type_ascription::declared;
+                    elem.contamination = contamination_state::clean;
                 }
                 else
                 {
-                    elem.val         = std::string(part);
-                    elem.type        = value_type::string;
-                    elem.type_source = type_ascription::tacit;
-                    elem.semantic    = semantic_state::invalid;
-                    array_invalid    = true;
+                    elem.val           = std::string(part);
+                    elem.type          = value_type::string;
+                    elem.type_source   = type_ascription::tacit;
+                    elem.semantic      = semantic_state::invalid;
+                    elem.contamination = contamination_state::clean;
+                    array_contaminated = true;
                 }
             }
             else if (want_str)
             {
-                elem.val         = std::string(part);
-                elem.type        = value_type::string;
-                elem.type_source = type_ascription::declared;
+                elem.val           = std::string(part);
+                elem.type          = value_type::string;
+                elem.type_source   = type_ascription::declared;
+                elem.contamination = contamination_state::clean;
             }
             else
             {
                 // Defensive: unresolved array type
-                elem.val         = std::string(part);
-                elem.type        = value_type::string;
-                elem.type_source = type_ascription::tacit;
-                elem.semantic    = semantic_state::invalid;
-                array_invalid    = true;
+                elem.val           = std::string(part);
+                elem.type          = value_type::string;
+                elem.type_source   = type_ascription::tacit;
+                elem.semantic      = semantic_state::invalid;
+                elem.contamination = contamination_state::clean;
+                array_contaminated = true;
             }
 
             values.push_back(std::move(elem));
@@ -387,17 +400,32 @@ namespace
             pos = next + 1;
         }
 
-        if (array_invalid)
+        // Handle trailing delimiter: "1|2|" → final empty element
+        if (!literal.empty() && literal.back() == '|')
         {
-            tv.semantic = semantic_state::invalid;
+            typed_value elem;
+            elem.origin        = origin;
+            elem.type          = value_type::unresolved;
+            elem.val           = std::monostate{};
+            elem.type_source   = type_ascription::tacit;
+            elem.semantic      = semantic_state::valid;
+            elem.contamination = contamination_state::clean;
+
+            values.push_back(std::move(elem));
+        }
+
+        if (array_contaminated)
+        {
+            tv.contamination = contamination_state::contaminated;
 
             ctx.errors.push_back({
                 semantic_error_kind::invalid_array_element,
                 loc,
                 "one or more array elements are invalid"
             });
-        }
 
+        }
+        
         return tv;
     }
 
@@ -425,12 +453,6 @@ namespace
         auto converted = try_convert(literal, column_type, loc, ctx.errors);
         if (!converted)
         {
-            //ctx.errors.push_back({
-            //    semantic_error_kind::type_mismatch,
-            //    loc,
-            //    "cell value does not match column type"
-            //});
-
             // Degrade to string
             tv.type     = value_type::string;
             tv.val      = std::string(literal);
@@ -461,12 +483,13 @@ namespace
                 "invalid key literal"
             });
 
-            return {
-                std::string(literal),
-                value_type::string,
-                type_ascription::tacit,
-                value_locus::key_value
-            };
+            typed_value tv;
+            tv.val         = std::string(literal);
+            tv.type        = value_type::string;
+            tv.type_source = type_ascription::tacit;
+            tv.origin      = value_locus::key_value;
+            tv.semantic    = semantic_state::invalid;
+            return tv;
         }
 
         auto tv = *inferred;
@@ -494,12 +517,15 @@ namespace
         });
 
         // Collapse to string, preserve data
-        return {
-            std::string(literal),
-            value_type::string,
-            type_ascription::tacit,
-            value_locus::key_value
-        };
+        {
+            typed_value tv;
+            tv.val         = std::string(literal);
+            tv.type        = value_type::string;
+            tv.type_source = type_ascription::tacit;
+            tv.origin      = value_locus::key_value;
+            tv.semantic    = semantic_state::invalid;
+            return tv;
+        }
     }
 
 } // anon ns
@@ -545,6 +571,15 @@ namespace
 
                 default:
                     break;
+            }
+        }
+
+        for (auto const& cat : doc_.categories_)
+        {
+            if (cat.contamination == contamination_state::contaminated)
+            {
+                doc_.contamination = contamination_state::contaminated;
+                break;
             }
         }
 
@@ -750,12 +785,13 @@ namespace
                     : std::string_view{};
 
             typed_value tv;
+            tv.origin = value_locus::table_cell;
 
             if (col.type == value_type::string_array ||
                 col.type == value_type::int_array ||
                 col.type == value_type::float_array)
             {
-                tv = coerce_array(literal, col.type, ev.loc, out_);
+                tv = coerce_array(literal, col.type, value_locus::table_cell, ev.loc, out_);
             }
             else
             {
@@ -835,31 +871,63 @@ namespace
         }
 
         // 2. Coerce value (never drops the key)
+        const bool target_is_array =
+            target == value_type::string_array ||
+            target == value_type::int_array ||
+            target == value_type::float_array;
+
         typed_value tv;
 
-        if (target == value_type::string_array ||
-            target == value_type::int_array ||
-            target == value_type::float_array)
+        if (target_is_array)
         {
-            tv = coerce_array(cst.literal, target, cst.loc, out_);
+            tv = coerce_array(cst.literal, target, value_locus::key_value, cst.loc, out_);
         }
         else
         {
             tv = coerce_key_value(cst.literal, target, cst.loc, out_);
         }
 
+        // 3. Local invalidity
         if (tv.semantic == semantic_state::invalid)
             k.semantic = semantic_state::invalid;
 
-        // 3. Finalise type
+        // contamination if array contains invalid elements
+        if (tv.contamination == contamination_state::contaminated)
+        {
+            k.contamination = contamination_state::contaminated;
+        }        
+        else if (target_is_array)
+        {
+            // array elements can contaminate without invalidating the key
+            for (auto const& elem : std::get<std::vector<typed_value>>(tv.val))
+            {
+                if (elem.semantic == semantic_state::invalid ||
+                    elem.contamination == contamination_state::contaminated)
+                {
+                    k.contamination = contamination_state::contaminated;
+                    break;
+                }
+            }
+        }
+
+        // 4. Finalise type
         k.type  = tv.type;
         k.value = std::move(tv);
 
         key_id id{ doc_.keys_.size() };
-        doc_.keys_.push_back(std::move(k));
-        doc_.categories_[cst.owner.val].keys.push_back(id);
-    }
+        doc_.keys_.emplace_back(std::move(k));
 
+        auto & key = doc_.keys_[id.val];
+        auto & cat = doc_.categories_[cst.owner.val];
+
+        cat.keys.emplace_back(id);
+
+        if (key.contamination == contamination_state::contaminated ||
+            key.semantic == semantic_state::invalid)
+        {
+            cat.contamination = contamination_state::contaminated;
+        }
+    }
 
     inline bool materialiser::row_is_valid(document::row_node const& r)
     {

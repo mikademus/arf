@@ -80,6 +80,8 @@ namespace arf
 
         category_id create_category(category_id id, std::string_view name, category_id parent);
 
+        contamination_state contamination {contamination_state::clean};
+
     private:
 
         category_id create_root();
@@ -122,12 +124,13 @@ namespace arf
 
         struct key_node
         {
-            std::string     name;
-            category_id     owner;
-            value_type      type;
-            type_ascription type_source;
-            typed_value     value;
-            semantic_state  semantic = semantic_state::valid;
+            std::string          name;
+            category_id          owner;
+            value_type           type;
+            type_ascription      type_source;
+            typed_value          value;
+            semantic_state       semantic      {semantic_state::valid};
+            contamination_state  contamination {contamination_state::clean};
         };
 
         std::vector<category_node> categories_;
@@ -191,7 +194,8 @@ namespace arf
 
         const std::string& name() const noexcept { return node->name; }
         const typed_value& value() const noexcept { return node->value; }
-        bool is_valid() const noexcept { return node->semantic == semantic_state::valid; }
+        bool is_locally_valid() const noexcept { return node->semantic == semantic_state::valid; }
+        bool is_contaminated() const noexcept { return node->contamination == contamination_state::contaminated; }
     };
 
 

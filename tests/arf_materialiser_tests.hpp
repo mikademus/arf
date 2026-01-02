@@ -1,13 +1,18 @@
 #ifndef ARF_TESTS_MATERIALISER__
 #define ARF_TESTS_MATERIALISER__
 
+/* *************************************************************************
+ *  This test suite enforces semantic contracts of the ARF materialiser.   *
+ *  Test names describe language policy, not implementation behaviour.     *
+ ************************************************************************* */
+
 #include "arf_test_harness.hpp"
 #include "../include/arf.hpp"
 
 namespace arf::tests
 {
 
-static bool same_key_in_different_categories_allowed()
+static bool scope_keys_are_category_local()
 {
     constexpr std::string_view src =
         "a = 1\n"
@@ -19,7 +24,7 @@ static bool same_key_in_different_categories_allowed()
     return true;
 }
 
-static bool duplicate_key_rejected()
+static bool scope_duplicate_keys_rejected()
 {
     constexpr std::string_view src =
         "a = 1\n"
@@ -30,7 +35,7 @@ static bool duplicate_key_rejected()
     return true;
 }
 
-static bool declared_key_type_mismatch()
+static bool type_key_declared_mismatch_collapses()
 {
     constexpr std::string_view src =
         "x:int = hello\n";
@@ -40,7 +45,7 @@ static bool declared_key_type_mismatch()
     return true;
 }
 
-static bool declared_column_type_mismatch()
+static bool type_column_declared_mismatch_collapses()
 {
     constexpr std::string_view src =
         "# a:int\n"
@@ -53,7 +58,7 @@ static bool declared_column_type_mismatch()
     return true;
 }
 
-static bool named_collapse_closes_multiple_scopes()
+static bool scope_named_collapse_unwinds_all()
 {
     constexpr std::string_view src =
         ":a\n"
@@ -67,7 +72,7 @@ static bool named_collapse_closes_multiple_scopes()
     return true;
 }
 
-static bool invalid_named_close_is_error()
+static bool scope_invalid_named_close_is_error()
 {
     constexpr std::string_view src =
         ":a\n"
@@ -81,7 +86,7 @@ static bool invalid_named_close_is_error()
     return true;
 }
 
-static bool max_nesting_depth_enforced()
+static bool scope_max_depth_enforced()
 {
     materialiser_options opts;
     opts.max_category_depth = 2;
@@ -98,7 +103,7 @@ static bool max_nesting_depth_enforced()
     return true;
 }
 
-static bool invalid_declared_key_type_is_error()
+static bool type_key_invalid_declaration_is_error()
 {
     constexpr std::string_view src =
         "x:dragon = 42\n";
@@ -113,7 +118,7 @@ static bool invalid_declared_key_type_is_error()
     return true;
 }
 
-static bool invalid_declared_column_type_is_error()
+static bool type_column_invalid_declaration_is_error()
 {
     constexpr std::string_view src =
         "# a:dragon\n"
@@ -129,7 +134,7 @@ static bool invalid_declared_column_type_is_error()
     return true;
 }
 
-static bool invalid_key_is_flagged()
+static bool semantic_invalid_key_flagged()
 {
     constexpr std::string_view src =
         "x:dragon = 42\n";
@@ -148,7 +153,7 @@ static bool invalid_key_is_flagged()
     return true;
 }
 
-static bool invalid_column_is_flagged()
+static bool semantic_invalid_column_flagged()
 {
     constexpr std::string_view src =
         "# a:dragon\n"
@@ -168,7 +173,7 @@ static bool invalid_column_is_flagged()
     return true;
 }
 
-static bool invalid_cell_is_flagged()
+static bool semantic_invalid_cell_flagged()
 {
     constexpr std::string_view src =
         "# a:int\n"
@@ -187,7 +192,7 @@ static bool invalid_cell_is_flagged()
     return true;
 }
 
-static bool invalid_column_marks_rows_invalid_not_table()
+static bool contamination_column_contaminates_rows_only()
 {
     constexpr std::string_view src =
         "# a:int\n"
@@ -209,7 +214,7 @@ static bool invalid_column_marks_rows_invalid_not_table()
     return true;
 }
 
-static bool invalid_cell_is_flagged_from_view()
+static bool view_exposes_row_invalidity()
 {
     constexpr std::string_view src =
         "# a:int\n"
@@ -231,7 +236,7 @@ static bool invalid_cell_is_flagged_from_view()
     return true;
 }
 
-static bool key_array_valid_elements()
+static bool array_key_all_elements_valid()
 {
     constexpr std::string_view src =
         "arr:int[] = 1|2|3\n";
@@ -241,12 +246,13 @@ static bool key_array_valid_elements()
 
     auto key = doc.key(key_id{0});
     EXPECT(key.has_value(), "missing key");
-    EXPECT(key->is_valid(), "valid array key rejected");
+    EXPECT(key->is_locally_valid(), "valid array key rejected");
+    EXPECT(!key->is_contaminated(), "clean array key marked as contaminated");
 
     return true;
 }
 
-static bool key_array_invalid_element_marks_key_invalid()
+static bool array_invalid_element_contaminates_key()
 {
     constexpr std::string_view src =
         "arr:int[] = 1|nope|3\n";
@@ -256,12 +262,13 @@ static bool key_array_invalid_element_marks_key_invalid()
 
     auto key = doc.key(key_id{0});
     EXPECT(key.has_value(), "missing key");
-    EXPECT(!key->is_valid(), "invalid array element did not invalidate key");
+    EXPECT(key->is_locally_valid(), "invalid array element should not invalidate key");
+    EXPECT(key->is_contaminated(), "invalid array element should contaminate key");
 
     return true;
 }
 
-static bool key_array_without_annotation_collapses_to_string()
+static bool array_untyped_collapses_to_string()
 {
     constexpr std::string_view src =
         "arr = 1|2|3\n";
@@ -276,7 +283,7 @@ static bool key_array_without_annotation_collapses_to_string()
     return true;
 }
 
-static bool table_array_cells_valid()
+static bool array_table_cells_valid()
 {
     constexpr std::string_view src =
         "# id  vals:int[]\n"
@@ -295,7 +302,7 @@ static bool table_array_cells_valid()
     return true;
 }
 
-static bool table_array_cell_invalid_element_contaminates_row()
+static bool array_invalid_element_contaminates_row()
 {
     constexpr std::string_view src =
         "# id  vals:int[]\n"
@@ -317,7 +324,7 @@ static bool table_array_cell_invalid_element_contaminates_row()
     return true;
 }
 
-static bool array_allows_empty_elements()
+static bool array_empty_elements_are_missing_not_contaminating()
 {
     constexpr std::string_view src =
         "arr:str[] = a||b|\n";
@@ -327,7 +334,8 @@ static bool array_allows_empty_elements()
 
     auto key = doc.key(key_id{0});
     EXPECT(key.has_value(), "missing key");
-    EXPECT(key->is_valid(), "empty array elements should not invalidate string array");
+    EXPECT(key->is_locally_valid(), "empty array elements should not invalidate array");
+    EXPECT(!key->is_contaminated(), "empty array elements should not contaiminate array");
 
     return true;
 }
@@ -337,26 +345,80 @@ static bool array_allows_empty_elements()
 
 inline void run_materialiser_tests()
 {
-    RUN_TEST(same_key_in_different_categories_allowed);
-    RUN_TEST(duplicate_key_rejected);
-    RUN_TEST(declared_key_type_mismatch);
-    RUN_TEST(declared_column_type_mismatch);
-    RUN_TEST(named_collapse_closes_multiple_scopes);
-    RUN_TEST(invalid_named_close_is_error);
-    RUN_TEST(max_nesting_depth_enforced);
-    RUN_TEST(invalid_declared_key_type_is_error);
-    RUN_TEST(invalid_declared_column_type_is_error);
-    RUN_TEST(invalid_key_is_flagged);
-    RUN_TEST(invalid_column_is_flagged);
-    RUN_TEST(invalid_cell_is_flagged);  
-    RUN_TEST(invalid_column_marks_rows_invalid_not_table);
-    RUN_TEST(invalid_cell_is_flagged_from_view);
-    RUN_TEST(key_array_valid_elements);
-    RUN_TEST(key_array_invalid_element_marks_key_invalid);
-    RUN_TEST(key_array_without_annotation_collapses_to_string);
-    RUN_TEST(table_array_cells_valid);
-    RUN_TEST(table_array_cell_invalid_element_contaminates_row);
-    RUN_TEST(array_allows_empty_elements);
+/*
+1. Global structural & scoping rules
+Policies / invariants
+
+• Categories form a tree with lexical scoping
+• Keys are scoped to categories
+• Duplicate keys within the same category are illegal
+• Same key name in different categories is legal
+• Named collapse closes all intermediate scopes
+• Invalid named closes are errors
+• Maximum nesting depth is enforced
+*/    
+    RUN_TEST(scope_keys_are_category_local);
+    RUN_TEST(scope_duplicate_keys_rejected);
+    RUN_TEST(scope_named_collapse_unwinds_all);
+    RUN_TEST(scope_invalid_named_close_is_error);
+    RUN_TEST(scope_max_depth_enforced);
+
+/*
+2. Declared type handling (keys & columns)
+Policies / invariants
+
+• Declared types are parsed before coercion
+• Unknown declared types are semantic errors
+• Declared type mismatch does not drop data
+• On mismatch, values collapse to string
+• Collapsing marks local invalidity
+*/    
+    RUN_TEST(type_key_declared_mismatch_collapses);
+    RUN_TEST(type_key_invalid_declaration_is_error);
+    RUN_TEST(type_column_declared_mismatch_collapses);
+    RUN_TEST(type_column_invalid_declaration_is_error);
+    
+/*
+3. Local semantic validity vs contamination
+
+Definitions (as implemented)
+
+• Locally invalid = structurally or semantically malformed
+• Contaminated = depends on invalid or contaminated content
+• Invalidity does not propagate upward
+• Contamination does propagate upward
+• Contamination does not propagate downward
+
+Policies / invariants
+
+• Invalid members contaminate containers
+• Containers remain locally valid if structurally intact
+• Structural integrity is never inferred from child semantics
+*/    
+    RUN_TEST(semantic_invalid_key_flagged);
+    RUN_TEST(semantic_invalid_column_flagged);
+    RUN_TEST(semantic_invalid_cell_flagged);  
+    RUN_TEST(contamination_column_contaminates_rows_only);
+    RUN_TEST(view_exposes_row_invalidity);
+
+/*
+4. Arrays: parsing, coercion, and policy
+Policies / invariants
+
+• Arrays preserve element boundaries
+• Empty elements are missing-but-valid
+• Arrays may contain heterogeneously typed values
+• Invalid elements contaminate the container
+• Invalid elements do not invalidate the container
+• Arrays without declared type collapse to string
+• Trailing delimiters create empty elements
+*/    
+    RUN_TEST(array_key_all_elements_valid);
+    RUN_TEST(array_invalid_element_contaminates_key);
+    RUN_TEST(array_untyped_collapses_to_string);
+    RUN_TEST(array_table_cells_valid);
+    RUN_TEST(array_invalid_element_contaminates_row);
+    RUN_TEST(array_empty_elements_are_missing_not_contaminating);
 }
 
 }

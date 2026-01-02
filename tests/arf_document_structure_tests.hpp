@@ -7,7 +7,7 @@
 namespace arf::tests
 {
 
-static bool test_root_exists()
+static bool document_root_always_exists()
 {
     auto doc = arf::load("");
     EXPECT(doc.has_errors() == false, "");
@@ -16,7 +16,7 @@ static bool test_root_exists()
     return true;
 }
 
-static bool test_simple_category()
+static bool document_category_single_level_attaches_to_root()
 {
     constexpr std::string_view src =
         "category:\n";
@@ -31,7 +31,7 @@ static bool test_simple_category()
     return true;
 }
 
-static bool test_nested_categories()
+static bool document_category_nested_ownership_preserved()
 {
     constexpr std::string_view src =
         "outer:\n"
@@ -44,7 +44,7 @@ static bool test_nested_categories()
     return true;
 }
 
-static bool test_category_implicit_closure()
+static bool document_category_implicit_closure_on_scope_pop()
 {
     constexpr std::string_view src =
         "a:\n"
@@ -59,7 +59,7 @@ static bool test_category_implicit_closure()
     return true;
 }
 
-static bool test_simple_table()
+static bool document_table_at_root_allowed()
 {
     constexpr std::string_view src =
         "data:\n"
@@ -75,7 +75,7 @@ static bool test_simple_table()
     return true;
 }
 
-static bool test_table_in_subcategory()
+static bool document_table_inside_category_allowed()
 {
     constexpr std::string_view src =
         "top:\n"
@@ -91,7 +91,7 @@ static bool test_table_in_subcategory()
     return true;
 }
 
-static bool test_multiple_root_tables()
+static bool document_multiple_tables_at_same_scope_allowed()
 {
     constexpr std::string_view src =
         "# a b\n"
@@ -112,7 +112,7 @@ static bool test_multiple_root_tables()
     return true;
 }
 
-static bool test_keys_and_tables_interleaved()
+static bool document_keys_attach_to_current_category()
 {
     constexpr std::string_view src =
         "top:\n"
@@ -135,7 +135,7 @@ static bool test_keys_and_tables_interleaved()
     return true;
 }
 
-static bool test_root_and_subcategory_keys()
+static bool document_root_key_before_category_is_allowed()
 {
     constexpr std::string_view src =
         "x = 1\n"
@@ -148,7 +148,7 @@ static bool test_root_and_subcategory_keys()
     return true;
 }
 
-static bool test_deep_implicit_closure()
+static bool document_category_multiple_implicit_closures_supported()
 {
     constexpr std::string_view src =
         "a:\n"
@@ -166,16 +166,44 @@ static bool test_deep_implicit_closure()
 
 inline void run_document_structure_tests()
 {
-    RUN_TEST(test_root_exists);
-    RUN_TEST(test_simple_category);
-    RUN_TEST(test_nested_categories);
-    RUN_TEST(test_category_implicit_closure);
-    RUN_TEST(test_simple_table);
-    RUN_TEST(test_table_in_subcategory);
-    RUN_TEST(test_multiple_root_tables);
-    RUN_TEST(test_keys_and_tables_interleaved);
-    RUN_TEST(test_root_and_subcategory_keys);
-    RUN_TEST(test_deep_implicit_closure);
+/*
+1. Root and ownership invariants
+• There is exactly one implicit root category
+• Everything has a well-defined owner
+• Ownership is hierarchical and acyclic
+*/    
+    RUN_TEST(document_root_always_exists);
+
+/*
+2. Category formation rules
+• Categories can nest
+• Categories implicitly close when indentation decreases
+• Deep nesting is handled correctly
+*/
+    RUN_TEST(document_category_single_level_attaches_to_root);
+    RUN_TEST(document_category_nested_ownership_preserved);
+    RUN_TEST(document_category_implicit_closure_on_scope_pop);
+    RUN_TEST(document_category_multiple_implicit_closures_supported);
+
+/*
+3. Table placement rules
+• Tables may appear at root or inside categories
+• Tables belong to exactly one category
+• Multiple tables at the same level are allowed
+*/
+    RUN_TEST(document_table_at_root_allowed);
+    RUN_TEST(document_table_inside_category_allowed);
+    RUN_TEST(document_multiple_tables_at_same_scope_allowed);
+
+/*
+Key placement rules
+
+• Keys may appear at root or inside categories
+• Keys and tables may interleave
+• Keys attach to the correct owning category regardless of order
+*/
+    RUN_TEST(document_keys_attach_to_current_category);
+    RUN_TEST(document_root_key_before_category_is_allowed);
 }
 
 }

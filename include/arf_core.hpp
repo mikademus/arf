@@ -112,12 +112,13 @@ namespace arf
 
     struct typed_value
     {
-        value           val;
-        value_type      type;
-        type_ascription type_source;
-        value_locus     origin;
+        value               val;
+        value_type          type;
+        type_ascription     type_source;
+        value_locus         origin;
         std::optional<std::string> source_literal;
-        semantic_state  semantic = semantic_state::valid;
+        semantic_state      semantic      = semantic_state::valid;
+        contamination_state contamination = contamination_state::clean;
     };
 
 //========================================================================
