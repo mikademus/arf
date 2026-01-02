@@ -1,6 +1,6 @@
-# Arf! — A Readable Format
+# Arf! — A Readable Data Format for Configs and Tables
 
-| **A tiny, human-centred data language for hierarchical configs and tables;<br> Readable by humans, trivial to parse by machines** | ![mascot](arf_mascot_small.png) |
+| **Arf! is a compact, deterministic data language designed as a human-centric alternative to JSON, YAML, and TOML that excels where hierarchical configuration meets structured tabular data. | ![mascot](arf_mascot_small.png) |
 |-------------------------------------------------------------------------------------------------------------------------------|---------------------------------------|
 
 Arf! (“A Readable Format”, also the bark of an enthusiastic small dog) is a compact, predictable, deterministic and explicitly scoped data language built for human readability without giving up structure. It mixes hierarchical categories, key/value pairs, and TOON-style tables[^1] (column-aligned, whitespace-delimited) that can be subdivided into named subsections.
@@ -19,13 +19,10 @@ The goals are simple:
 
 ## Overview
 
-Also see:
-* Details on [the query interface](docs/query_interface.md)
-* Details on [the serialiser](docs/serializer_interface.md)
-
 ### Comparison at a Glance
 | Feature	                | JSON	 | YAML	 | TOML	 | TOON  | Arf!  | Notes |
 | :---                    | ---   | ---   | ---   | ---   | ---   | --- |
+| Indentation Sensitivity | ❌    | ✅    | ❌    | n/a   | ❌    |     |
 | Comments	               | ❌	   | ✅	   | ✅	   | ⚠️    | ✅    | TOON: By convention, not by specification  |
 | Key/values	             | ✅	   | ✅	   | ✅	   | ❌    | ✅    |     |
 | Native Tables	          | ❌	   | ❌	   | ❌	   | ✅    | ✅    | TOON: CSV-style tabular arrays |
@@ -47,6 +44,17 @@ Arf! provides:
 * Fully deterministic parsing rules
 
 Arf! aims to be the practical everyday format for configs, content files, world definitions, and structured datasets.
+
+### Use cases
+
+Examples of areas of particular suitability:
+* **Game Development**: Storing entity definitions and loot tables.
+* **System Administration**: Configuration files that won't break on a copy-paste error.
+* **Data Science**: Small, readable datasets that require more hierarchy than a CSV but less overhead than a database.
+
+### Also see:
+* Details on [the query interface](docs/query_interface.md)
+* Details on [the serialiser](docs/serializer_interface.md)
 
 ## Philosophy: The Human-First Protocol, Built for Speed
 
@@ -109,7 +117,7 @@ Arf! attempts to unify the strengths of each:
 ## Note on 0.2.0
 
 > [!WARNING]
-> Arf! is divided into three areas of resposibility: parsing, querying and serialisation. Serialisation is intended to be document-ordered and retain the order and structure of a parsed document. Note that **in this version** the serialiser _normalises data to canonical order_. This will be amended.
+> Arf! is divided into three areas of resposibility: parsing, querying and serialisation. Serialisation is intended to be document-ordered and retain the order and structure of a parsed document. Note that **in this version** the serialiser _normalises data to canonical order_. This will be amended in 0.3.0.
 
 # Syntax Overview
 ## Basic constructs
