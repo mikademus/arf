@@ -40,6 +40,7 @@ namespace arf
         invalid_array_element, 
         column_arity_mismatch,
         duplicate_key,
+        invalid_category_open,
         invalid_category_close,
         depth_exceeded,
     // warnings
@@ -588,7 +589,28 @@ namespace
 
     inline void materialiser::handle_category_open(const parse_event& ev)
     {
-        if (stack_.size() >= opts_.max_category_depth)
+        auto sv = std::string_view(ev.text);
+        bool is_subcat = sv.starts_with(":");
+        bool is_topcat = sv.ends_with(":");
+
+        if (is_subcat && is_topcat)
+        {
+            out_.errors.push_back({
+                semantic_error_kind::invalid_category_open,
+                ev.loc,
+                "category can't be both top-level and subcategory"
+            });
+            return;
+        }
+
+        if (is_topcat)
+        {
+            // close all open categories except root
+            while (stack_.size() > 1)
+                stack_.pop_back();
+        }
+
+        if (opts_.max_category_depth != 0 && stack_.size() >= opts_.max_category_depth)
         {
             out_.errors.push_back({
                 semantic_error_kind::depth_exceeded,

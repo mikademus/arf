@@ -45,6 +45,8 @@ namespace arf
 
         std::optional<category_view> category(category_id id) const noexcept;
 
+        std::vector<category_view> categories() const noexcept;
+
         //------------------------------------------------------------------------
         // Table access
         //------------------------------------------------------------------------
@@ -164,6 +166,12 @@ namespace arf
         std::span<const key_id> keys() const noexcept { return node->keys;}
         bool is_locally_valid() const noexcept { return node->semantic == semantic_state::valid; }
         bool is_contaminated() const noexcept { return node->contamination == contamination_state::contaminated; }
+        std::optional<category_view> parent() const noexcept 
+        { 
+            if (node->parent != invalid_id<category_tag>())
+                return category_view{doc, &doc->categories_[node->parent.val]};
+            return std::nullopt;
+        }
     };
 
     struct document::table_view
@@ -175,6 +183,7 @@ namespace arf
         std::span<const table_row_id> rows() const noexcept { return node->rows; }
         bool is_locally_valid() const noexcept { return node->semantic == semantic_state::valid; }
         bool is_contaminated() const noexcept { return node->contamination == contamination_state::contaminated; }
+        category_view owner() const noexcept { return category_view{doc, &doc->categories_[node->owner.val]}; }        
     };
 
     struct document::table_row_view
@@ -185,6 +194,9 @@ namespace arf
         std::span<const typed_value> cells() const noexcept { return node->cells; }
         bool is_locally_valid() const noexcept { return node->semantic == semantic_state::valid; }
         bool is_contaminated() const noexcept { return node->contamination == contamination_state::contaminated; }
+        category_view owner() const noexcept { return category_view{doc, &doc->categories_[node->owner.val]}; }        
+        table_view table() const noexcept { return table_view{doc, &doc->tables_[node->table.val]}; }        
+
     };
 
     struct document::key_view
@@ -196,6 +208,7 @@ namespace arf
         const typed_value& value() const noexcept { return node->value; }
         bool is_locally_valid() const noexcept { return node->semantic == semantic_state::valid; }
         bool is_contaminated() const noexcept { return node->contamination == contamination_state::contaminated; }
+        category_view owner() const noexcept { return category_view{ doc, &doc->categories_[node->owner.val] }; }
     };
 
 
@@ -246,6 +259,14 @@ namespace arf
             return std::nullopt;
 
         return category_view{ this, &categories_[id.val] };
+    }
+
+    std::vector<document::category_view> document::categories() const noexcept
+    {
+        std::vector<category_view> res;
+        for (auto const & c : categories_)
+            res.push_back(category_view{ this, &categories_[c.id.val] });
+        return res;
     }
 
     inline std::optional<document::table_view>

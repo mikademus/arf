@@ -44,7 +44,7 @@ static bool document_category_nested_ownership_preserved()
     return true;
 }
 
-static bool document_category_implicit_closure_on_scope_pop()
+static bool document_colon_categories_nest_without_explicit_closure()
 {
     constexpr std::string_view src =
         "a:\n"
@@ -52,10 +52,17 @@ static bool document_category_implicit_closure_on_scope_pop()
         ":c\n";
 
     auto doc = load(src);
-    EXPECT(doc.has_errors() == false, "");
+    EXPECT(!doc.has_errors(), "rejected correct script");
 
-    // root, a, b, c
-    EXPECT(doc->category_count() == 4, "");
+    EXPECT(doc->category_count() == 4, "expected root, a, b, c");
+
+    auto c = doc->category(category_id{3});
+    EXPECT(c.has_value(), "category c must exist");
+
+    auto parent = c->parent();
+    EXPECT(parent.has_value(), "category c must have a parent");
+    EXPECT(c->parent()->name() == "b", "category c must attach to b");
+
     return true;
 }
 
@@ -143,12 +150,26 @@ static bool document_root_key_before_category_is_allowed()
         "    y = 2\n";
 
     auto doc = load(src);
-    EXPECT(doc.has_errors() == false, "");
-    EXPECT(doc->category_count() == 2, "");
+    EXPECT(doc.has_errors() == false, "document should parse without errors");
+
+    auto root = doc->root();
+    EXPECT(root.has_value(), "root category must exist");
+
+    // root key
+    auto key0 = doc->key(key_id{0});
+    EXPECT(key0.has_value(), "root key must exist");
+    EXPECT(key0->owner().is_root(), "key defined before category must attach to root");
+
+    // category key
+    auto key1 = doc->key(key_id{1});
+    EXPECT(key1.has_value(), "category key must exist");
+    EXPECT(!key1->owner().is_root(), "key defined inside category must not attach to root");
+    EXPECT(key1->owner().name() == "c", "key must attach to category c");
+
     return true;
 }
 
-static bool document_category_multiple_implicit_closures_supported()
+static bool document_category_explicit_nesting_does_not_leak_scope()
 {
     constexpr std::string_view src =
         "a:\n"
@@ -157,10 +178,24 @@ static bool document_category_multiple_implicit_closures_supported()
         "d:\n";
 
     auto doc = load(src);
-    EXPECT(doc.has_errors() == false, "");
-    EXPECT(doc->category_count() == 5, ""); // root + a + b + c + d
-    return true;
-}
+    EXPECT(doc.has_errors() == false, "document must parse without errors");
+    EXPECT(doc->category_count() == 5, "expected root + a + b + c + d");
+
+    auto root = doc->root();
+    EXPECT(root.has_value(), "root category must exist");
+
+    // Retrieve categories by traversal
+    auto a = doc->category(category_id{1});
+    auto b = doc->category(category_id{2});
+    auto c = doc->category(category_id{3});
+    auto d = doc->category(category_id{4});
+
+    EXPECT(a->parent()->is_root(), "a must attach to root");
+    EXPECT(b->parent()->name() == "a", "b must attach to a");
+    EXPECT(c->parent()->name() == "b", "c must attach to b");
+    EXPECT(d->parent()->is_root(), "d must attach to root after nested declarations");
+
+    return true;}
 
 //----------------------------------------------------------------------------
 
@@ -182,8 +217,8 @@ inline void run_document_structure_tests()
 */
     RUN_TEST(document_category_single_level_attaches_to_root);
     RUN_TEST(document_category_nested_ownership_preserved);
-    RUN_TEST(document_category_implicit_closure_on_scope_pop);
-    RUN_TEST(document_category_multiple_implicit_closures_supported);
+    RUN_TEST(document_colon_categories_nest_without_explicit_closure);
+    RUN_TEST(document_category_explicit_nesting_does_not_leak_scope);
 
 /*
 3. Table placement rules
