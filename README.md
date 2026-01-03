@@ -1,6 +1,6 @@
 # Arf! — A Readable Data Format for Configs and Tables
 
-| **Arf! is a compact, deterministic data language designed as a human-centric alternative to JSON, YAML, and TOML that excels where hierarchical configuration meets structured tabular data. | ![mascot](arf_mascot_small.png) |
+| Arf! is a compact, deterministic data language designed as a human-centric alternative to JSON, YAML, and TOML that excels where hierarchical configuration meets structured tabular data. | ![mascot](arf_mascot_small.png) |
 |-------------------------------------------------------------------------------------------------------------------------------|---------------------------------------|
 
 Arf! (“A Readable Format”, also the bark of an enthusiastic small dog) is a compact, predictable, deterministic and explicitly scoped data language built for human readability without giving up structure. It mixes hierarchical categories, key/value pairs, and TOON-style tables[^1] (column-aligned, whitespace-delimited) that can be subdivided into named subsections.
