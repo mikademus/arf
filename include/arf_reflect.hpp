@@ -1,14 +1,15 @@
 // arf_reflect.hpp - A Readable Format (Arf!) - Reflection Interface
-// Version 0.2.0
+// Version 0.3.0
 // Copyright 2025 Mikael Ueno A
 // Licenced as-is under the MIT licence.
 
 #ifndef ARF_REFLECT_HPP
 #define ARF_REFLECT_HPP
 
-#include "arf_core.hpp"
-#include <functional>
+#include "arf_document.hpp"
 #include <span>
+#include <optional>
+#include <vector>
 #include <cassert>
 
 namespace arf
@@ -17,20 +18,15 @@ namespace arf
 // Forward declarations
 //========================================================================
     
-    // Value metadata
     class value_ref;
-
-    // Document metadata
-    // TODO
-
-    // Table metadata
     class table_ref;
     class table_column_ref;
     class table_row_ref;
+    class table_cell_ref;
     class table_partition_ref;
 
 //========================================================================
-// value_ref
+// value_ref - Reflection over typed_value
 //========================================================================
     
     class value_ref 
@@ -38,238 +34,248 @@ namespace arf
     public:
         value_ref(const typed_value& v) : tv_(&v) {}
 
-    // --- provenance ---
-        value_type      type()          const { return tv_->type; }
-        bool            declared()      const { return tv_->type_source == type_ascription::declared; }
-        type_ascription type_source()   const { return tv_->type_source; }
-        value_locus     origin_site()   const { return tv_->origin_site; }
+    // --- Provenance ---
+        value_type      type() const { return tv_->type; }
+        bool            declared() const { return tv_->type_source == type_ascription::declared; }
+        type_ascription type_source() const { return tv_->type_source; }
+        value_locus     origin_site() const { return tv_->origin; }
+        
+        bool is_valid() const { return tv_->semantic == semantic_state::valid; }
+        bool is_contaminated() const { return tv_->contamination == contamination_state::contaminated; }
 
-    // --- raw access ---
+    // --- Raw access ---
         const value& raw() const { return tv_->val; }
-
         std::optional<std::string_view> source_str() const;
         
-    // --- format ---        
+    // --- Format queries ---        
         bool is_scalar() const; 
-        bool is_array()  const;
+        bool is_array() const;
 
         bool is_string() const { return std::holds_alternative<std::string>(tv_->val); }
-        bool is_int()    const { return std::holds_alternative<int64_t>(tv_->val); }
-        bool is_float()  const { return std::holds_alternative<double>(tv_->val); }
-        bool is_bool()   const { return std::holds_alternative<bool>(tv_->val); }
+        bool is_int() const { return std::holds_alternative<int64_t>(tv_->val); }
+        bool is_float() const { return std::holds_alternative<double>(tv_->val); }
+        bool is_bool() const { return std::holds_alternative<bool>(tv_->val); }
         
-        bool is_string_array() const { return std::holds_alternative<std::vector<std::string>>(tv_->val); }
-        bool is_int_array()    const { return std::holds_alternative<std::vector<int64_t>>(tv_->val); }
-        bool is_float_array()  const { return std::holds_alternative<std::vector<double>>(tv_->val); }
+        bool is_string_array() const { return tv_->type == value_type::string_array; }
+        bool is_int_array() const { return tv_->type == value_type::int_array; }
+        bool is_float_array() const { return tv_->type == value_type::float_array; }
         
-    // --- scalar access: allow conversions ---
+    // --- Scalar access (with conversion) ---
         std::optional<std::string> as_string() const;        
-        std::optional<int64_t>     as_int()    const { return to_int(tv_->val); }
-        std::optional<double>      as_float()  const { return to_float(tv_->val); }
-        std::optional<bool>        as_bool()   const { return to_bool(tv_->val); }
+        std::optional<int64_t> as_int() const { return to_int(tv_->val); }
+        std::optional<double> as_float() const { return to_float(tv_->val); }
+        std::optional<bool> as_bool() const { return to_bool(tv_->val); }
         
-    // --- array access: non-converting views ---
-        std::optional<std::span<const std::string>> string_array() const { return array_view<std::string>(); }
-        std::optional<std::span<const int64_t>>     int_array()    const { return array_view<int64_t>(); }
-        std::optional<std::span<const double>>      float_array()  const { return array_view<double>(); }
-
+    // --- Array element access ---
+        size_t array_size() const;
+        value_ref array_element(size_t index) const;
 
     private:
         const typed_value* tv_;
 
-        template<typename T>
-        std::optional<std::span<const T>> array_view() const;
-
         std::optional<std::string> to_string(const value& v) const;
-        std::optional<int64_t>     to_int(const value& v) const;
-        std::optional<double>      to_float(const value& v) const;
-        std::optional<bool>        to_bool(const value& v) const;
+        std::optional<int64_t> to_int(const value& v) const;
+        std::optional<double> to_float(const value& v) const;
+        std::optional<bool> to_bool(const value& v) const;
     };
 
 //========================================================================
-// table_column_ref
+// table_column_ref - Reflection over column
 //========================================================================
 
     class table_column_ref
     {
     public:
-        table_column_ref(const column& col, size_t index)
-            : col_(&col), index_(index) {}
+        table_column_ref(const column* col, size_t index)
+            : col_(col), index_(index) {}
 
         const std::string& name() const { return col_->name; }
-        size_t             index() const { return index_; }
+        size_t index() const { return index_; }
 
-        value_type      type()        const { return col_->type; }
+        value_type type() const { return col_->type; }
         type_ascription type_source() const { return col_->type_source; }
+        
+        bool is_valid() const { return col_->semantic == semantic_state::valid; }
+
+        std::optional<std::string_view> declared_type_literal() const
+        {
+            if (col_->declared_type)
+                return *col_->declared_type;
+            return std::nullopt;
+        }
 
     private:
         const column* col_;
-        size_t        index_;
+        size_t index_;
     };
 
 //========================================================================
-// table_cell_ref
+// table_cell_ref - Reflection over individual table cell
 //========================================================================
 
     class table_cell_ref
     {
     public:
-        table_cell_ref(const table_row_ref& row, const table_column_ref& col)
-            : row_(&row)
-            , col_(&col)
-        {
-        }
+        table_cell_ref(const table_row_ref& row, const table_column_ref& col);
 
-        size_t row_index()    const; 
-        size_t column_index() const;
+        size_t row_index() const;
+        size_t column_index() const { return col_.index(); }
 
-        value_ref  value()  const;
+        value_ref value() const;
 
-        const table_column_ref& column() const { return *col_; }
-        const table_row_ref&    row()    const { return *row_; }   
+        const table_column_ref& column() const { return col_; }
+        const table_row_ref& row() const { return *row_; }
              
     private:
         const table_row_ref* row_;
-        const table_column_ref* col_;
+        table_column_ref col_;
     };
 
 //========================================================================
-// table_row_ref
+// table_row_ref - Reflection over table_row_view
 //========================================================================
 
     class table_row_ref
     {
     public:
-        table_row_ref(const table_ref& table, size_t row_index)
-            : table_(&table), row_index_(row_index) {}
+        table_row_ref(const document* doc, table_row_id id);
 
-        // --- identity ---
-        size_t index() const { return row_index_; }
-        const table_ref& table() const { return *table_; }
-
-        // --- structure ---
-        table_partition_ref subcategory() const;
-
+        table_row_id id() const { return id_; }
+        
+        bool is_valid() const;
+        bool is_contaminated() const;
+        
+        // Structure
+        const document* document() const { return doc_; }
+        document::category_view owning_category() const;
+        
         size_t cell_count() const;
-        auto cells() const;
+        value_ref cell_value(size_t col_index) const;
         table_cell_ref cell(const table_column_ref& col) const;
+        
+        // Iteration
+        auto cells() const;
 
     private:
-        const table_ref* table_;
-        size_t           row_index_; // ALWAYS table-space index
+        const arf::document* doc_;
+        table_row_id id_;
+        
+        const document::row_node* node() const;
+        
+        friend class table_cell_ref;
     };
 
 //========================================================================
-// table_partition_ref
+// table_partition_ref - Subcategory participation in table
 //========================================================================
 
     class table_partition_ref
     {
     public:
-        table_partition_ref(const table_ref& table, size_t subcat_index);
+        table_partition_ref(const table_ref* table, category_id cat_id);
 
-        const std::string& name() const;
-
-    //-- Direct rows -----------------------
-        // rows declared directly in this subcategory (no descendants)
+        category_id id() const { return cat_id_; }
+        std::string_view name() const;
+        
+        // Direct rows (declared in this category's scope)
         size_t direct_row_count() const;
-
-        // global table row index (direct only)
-        size_t direct_row_in_table(size_t i) const;
-
-        // iteration (direct only)
-        auto direct_rows() const;        
-
-    //-- All rows -------------------------
-        // number of rows in this subcategory (all descendants included)
+        table_row_ref direct_row(size_t i) const;
+        auto direct_rows() const;
+        
+        // All rows (including descendants)
         size_t row_count() const;
-
-        // global table row index
-        size_t row_in_table(size_t i) const;
-
-        // index relative to parent subcategory
-        size_t row_in_parent(size_t i) const;
-
-
-    //-- Subcategory/partition structure -------------------------
-        // hierarchy
+        table_row_ref row(size_t i) const;
+        auto rows() const;
+        
+        // Hierarchy
         bool has_parent() const;
         table_partition_ref parent() const;
-
+        
         size_t child_count() const;
         table_partition_ref child(size_t i) const;
-
-        // iteration
-        auto rows() const;
+        auto children() const;
 
     private:
         const table_ref* table_;
-        size_t           subcat_index_;
-    };  
-
-//========================================================================
-// table_ref
-// table_partition_info
-//========================================================================
-
-    struct table_partition_info
-    {
-        const category*     cat;
-        size_t              parent;      // index or npos
-        std::vector<size_t> children;
-
-        // rows declared directly while this partition is active
-        std::vector<size_t> direct_rows;
-
-        // rows including descendants
-        std::vector<size_t> all_rows;
-
-        std::vector<size_t> late_rows;        
+        category_id cat_id_;
+        
+        const document* doc() const;
+        document::category_view category() const;
+        
+        friend class table_ref;
     };
+
+//========================================================================
+// table_ref - Reflection over table_view
+//========================================================================
 
     class table_ref
     {
     public:
-        table_ref(const category& cat)
-            : category_(&cat) {}
-
-        const category& schema() const { return *category_; }
-                    
-        // columns
-        size_t      column_count() const;
-        table_column_ref  column(size_t i) const;
-        auto        columns() const;
-        //size_t      column_index(std::string_view name) const { return category_->column_index(name); }
+        table_ref(const document* doc, table_id id);
         
-        // rows (document order)
-        size_t      row_count() const { return category_->table_rows.size(); }
-        table_row_ref     row(size_t table_row_index) const { return table_row_ref(*this, table_row_index); }
-        auto        rows() const;
-
-        // subcategories
-        table_partition_ref root_subcategory() const;
-        size_t          subcategory_count() const;
-        table_partition_ref subcategory(size_t i) const;
-        auto            subcategories() const;
-
-        const std::vector<table_partition_info>& partitions() const;
+        table_id id() const { return id_; }
         
+        bool is_valid() const;
+        bool is_contaminated() const;
+        
+        // Schema
+        size_t column_count() const;
+        table_column_ref column(size_t i) const;
+        std::optional<size_t> column_index(std::string_view name) const;
+        auto columns() const;
+        
+        // Rows (document order)
+        size_t row_count() const;
+        table_row_ref row(size_t i) const;
+        auto rows() const;
+        
+        // Partitions (subcategory participation)
+        table_partition_ref root_partition() const;
+        size_t partition_count() const;
+        table_partition_ref partition(size_t i) const;
+        auto partitions() const;
+        
+        // Access
+        const document* document() const { return doc_; }
+        document::category_view owning_category() const;
+
     private:
-        const category* category_;
-        mutable std::vector<table_partition_info> partitions_;
+        const arf::document* doc_;
+        table_id id_;
+        
+        const document::table_node* node() const;
+        
+        // Partition building
+        struct partition_info
+        {
+            category_id cat_id;
+            category_id parent_id;
+            std::vector<category_id> children;
+            std::vector<table_row_id> direct_rows;
+            std::vector<table_row_id> all_rows;
+        };
+        
+        mutable std::vector<partition_info> partitions_;
+        mutable bool partitions_built_ = false;
+        
+        void build_partitions() const;
+        size_t find_partition_index(category_id cat_id) const;
+        
+        friend class table_partition_ref;
+        friend class table_row_ref;
     };
 
 //========================================================================
-// Document reflection API implementation
+// value_ref implementation
 //========================================================================
 
     inline std::optional<std::string_view> value_ref::source_str() const
     {
-        if (!tv_->source_literal)
-            return std::nullopt;
-
-        return std::string_view(*tv_->source_literal);
-    }        
+        if (tv_->source_literal)
+            return *tv_->source_literal;
+        return std::nullopt;
+    }
     
     inline bool value_ref::is_scalar() const 
     {
@@ -281,41 +287,40 @@ namespace arf
     
     inline bool value_ref::is_array() const 
     {
-        return std::holds_alternative<std::vector<std::string>>(tv_->val) ||
-               std::holds_alternative<std::vector<int64_t>>(tv_->val) ||
-               std::holds_alternative<std::vector<double>>(tv_->val);
+        return std::holds_alternative<std::vector<typed_value>>(tv_->val);
     }
     
     inline std::optional<std::string> value_ref::as_string() const
     {
         if (auto s = source_str())
             return std::string(*s);
-
         return to_string(tv_->val);
     }
 
-    template<typename T>
-    std::optional<std::span<const T>> value_ref::array_view() const
+    inline size_t value_ref::array_size() const
     {
-        if (auto* arr = std::get_if<std::vector<T>>(&tv_->val))
-            return std::span<const T>(*arr);
-        return std::nullopt;
+        if (auto* arr = std::get_if<std::vector<typed_value>>(&tv_->val))
+            return arr->size();
+        return 0;
+    }
+
+    inline value_ref value_ref::array_element(size_t index) const
+    {
+        auto* arr = std::get_if<std::vector<typed_value>>(&tv_->val);
+        assert(arr && index < arr->size());
+        return value_ref((*arr)[index]);
     }
 
     inline std::optional<std::string> value_ref::to_string(const value& v) const
     {
         if (auto* str = std::get_if<std::string>(&v))
             return *str;
-
         if (auto* i = std::get_if<int64_t>(&v))
             return std::to_string(*i);
-
         if (auto* d = std::get_if<double>(&v))
             return std::to_string(*d);
-
         if (auto* b = std::get_if<bool>(&v))
             return *b ? "true" : "false";
-
         return std::nullopt;
     }
 
@@ -323,10 +328,8 @@ namespace arf
     {
         if (auto* i = std::get_if<int64_t>(&v))
             return *i;
-
         if (auto* d = std::get_if<double>(&v))
             return static_cast<int64_t>(*d);
-
         if (auto* s = std::get_if<std::string>(&v))
         {
             try { return std::stoll(*s); }
@@ -339,10 +342,8 @@ namespace arf
     {
         if (auto* d = std::get_if<double>(&v))
             return *d;
-
         if (auto* i = std::get_if<int64_t>(&v))
             return static_cast<double>(*i);
-
         if (auto* s = std::get_if<std::string>(&v))
         {
             try { return std::stod(*s); }
@@ -355,7 +356,6 @@ namespace arf
     {
         if (auto* b = std::get_if<bool>(&v))
             return *b;
-
         if (auto* s = std::get_if<std::string>(&v))
         {
             std::string lower = detail::to_lower(*s);
@@ -363,203 +363,54 @@ namespace arf
             if (lower == "false" || lower == "no" || lower == "0") return false;
         }
         return std::nullopt;
-    }        
-
-//========================================================================
-// Table reflection API implementation
-//========================================================================
-
-    namespace detail
-    {
-        constexpr size_t npos = static_cast<size_t>(-1);
-
-        //inline void collect_rows_depth_first(
-        //    const category& cat,
-        //    std::vector<size_t>& out
-        //)
-        //{
-        //    for (const decl_ref& decl : cat.source_order)
-        //    {
-        //        switch (decl.kind)
-        //        {
-        //            case decl_kind::table_row:
-        //                out.push_back(decl.row_index);
-        //                break;
-//
-        //            case decl_kind::subcategory:
-        //                collect_rows_depth_first(*decl.subcategory, out);
-        //                break;
-//
-        //            case decl_kind::key:
-        //                break;
-        //        }
-        //    }
-        //}        
-
-        // Invariant: direct_rows are assigned strictly by lexical scope,
-        // not by visibility or traversal order.        
-        inline std::vector<table_partition_info>
-        build_partitions(const category& root)
-        {
-            std::vector<table_partition_info> parts;
-
-            parts.push_back({
-                &root,
-                npos,
-                {},
-                {},
-                {},
-                {}
-            });
-
-            std::vector<size_t> stack;
-            stack.push_back(0);
-
-            //std::vector<size_t> document_rows;
-
-            // Once a subcategory is seen, direct rows are sealed
-            std::vector<bool> direct_rows_sealed;
-            direct_rows_sealed.push_back(false); // root
-
-            auto enter_partition =
-            [&](const category* cat)
-            {
-                const size_t parent = stack.back();
-
-                direct_rows_sealed[parent] = true;
-
-                const size_t idx = parts.size();
-                parts.push_back({
-                    cat,
-                    parent,
-                    {},
-                    {},
-                    {},
-                    {}
-                });
-
-                parts[parent].children.push_back(idx);
-                direct_rows_sealed.push_back(false);
-                stack.push_back(idx);
-            };
-
-            auto leave_partition =
-            [&]()
-            {
-                assert(stack.size() > 1);
-                stack.pop_back();
-            };
-
-            // Pass 1: assign ownership, direct_rows, late_rows
-            std::function<void(const category&)> walk;
-            walk =
-            [&](const category& cat)
-            {
-                for (const decl_ref& decl : cat.source_order)
-                {
-                    switch (decl.kind)
-                    {
-                        case decl_kind::table_row:
-                        {
-                            //document_rows.push_back(decl.row_index);
-
-                            const size_t current = stack.back();
-
-                            if (!direct_rows_sealed[current])
-                                parts[current].direct_rows.push_back(decl.row_index);
-                            else
-                                parts[current].late_rows.push_back(decl.row_index);
-
-                            break;
-                        }
-
-                        case decl_kind::subcategory:
-                        {
-                            const category* sub = decl.subcategory;
-                            assert(sub);
-
-                            enter_partition(sub);
-                            walk(*sub);
-                            leave_partition();
-                            break;
-                        }
-
-                        case decl_kind::key:
-                            break;
-                    }
-                }
-            };
-
-            walk(root);
-
-            std::unordered_map<const category*, size_t> cat_to_partition;
-            for (size_t i = 0; i < parts.size(); ++i)
-                cat_to_partition[parts[i].cat] = i;            
-
-            // Pass 2: build all_rows bottom-up, strictly by partition ownership
-            for (size_t i = parts.size(); i-- > 0; )
-            {
-                auto& p = parts[i];
-                p.all_rows.clear();
-
-                // 1. Direct rows (authored before first subcategory)
-                p.all_rows.insert(
-                    p.all_rows.end(),
-                    p.direct_rows.begin(),
-                    p.direct_rows.end()
-                );
-
-                // 2. Children, in source order
-                for (const decl_ref& decl : p.cat->source_order)
-                {
-                    if (decl.kind != decl_kind::subcategory)
-                        continue;
-
-                    auto it = cat_to_partition.find(decl.subcategory);
-                    if (it == cat_to_partition.end())
-                        continue;
-
-                    const auto& child = parts[it->second];
-                    if (child.parent != i)
-                        continue; // safety: ensure immediate child
-
-                    p.all_rows.insert(
-                        p.all_rows.end(),
-                        child.all_rows.begin(),
-                        child.all_rows.end()
-                    );
-                }
-
-                // 3. Late rows (authored after subcategories)
-                p.all_rows.insert(
-                    p.all_rows.end(),
-                    p.late_rows.begin(),
-                    p.late_rows.end()
-                );
-            }
-
-            return parts;
-        }
-        
-    } // ns detail
-
-    size_t table_cell_ref::row_index() const 
-    { 
-        return row_->index(); 
     }
 
-    size_t table_cell_ref::column_index() const
-    { 
-        return col_->index(); 
+//========================================================================
+// table_row_ref implementation
+//========================================================================
+
+    inline table_row_ref::table_row_ref(const document* doc, table_row_id id)
+        : doc_(doc), id_(id)
+    {
     }
 
-
-    inline value_ref table_cell_ref::value() const
+    inline const document::row_node* table_row_ref::node() const
     {
-        const table_row& row =
-            row_->table().schema().table_rows[row_->index()];
-        const typed_value& tv = row.cells[col_->index()];
-        return value_ref(tv);
+        auto row_view = doc_->row(id_);
+        assert(row_view.has_value());
+        return row_view->node;
+    }
+
+    inline bool table_row_ref::is_valid() const
+    {
+        return node()->semantic == semantic_state::valid;
+    }
+
+    inline bool table_row_ref::is_contaminated() const
+    {
+        return node()->contamination == contamination_state::contaminated;
+    }
+
+    inline document::category_view table_row_ref::owning_category() const
+    {
+        return doc_->row(id_)->owner();
+    }
+
+    inline size_t table_row_ref::cell_count() const
+    {
+        return node()->cells.size();
+    }
+
+    inline value_ref table_row_ref::cell_value(size_t col_index) const
+    {
+        const auto& cells = node()->cells;
+        assert(col_index < cells.size());
+        return value_ref(cells[col_index]);
+    }
+
+    inline table_cell_ref table_row_ref::cell(const table_column_ref& col) const
+    {
+        return table_cell_ref(*this, col);
     }
 
     inline auto table_row_ref::cells() const
@@ -567,200 +418,95 @@ namespace arf
         struct cell_range
         {
             const table_row_ref* row;
+            
             struct iterator
             {
                 const table_row_ref* row;
-                size_t col;
-
-                table_cell_ref operator*() const
-                {
-                    auto cr = row->table().column(col);
-                    return row->cell(cr);
-                }
-
-                iterator& operator++()
-                {
-                    ++col;
-                    return *this;
-                }
-
-                bool operator!=(const iterator& other) const
-                {
-                    return col != other.col;
-                }
+                size_t index;
+                
+                value_ref operator*() const { return row->cell_value(index); }
+                iterator& operator++() { ++index; return *this; }
+                bool operator!=(const iterator& other) const { return index != other.index; }
             };
-
-            iterator begin() const { return { row, 0 }; }
-            iterator end()   const { return { row, row->cell_count() }; }
+            
+            iterator begin() const { return {row, 0}; }
+            iterator end() const { return {row, row->cell_count()}; }
         };
-
-        return cell_range{ this };
+        
+        return cell_range{this};
     }
 
-    inline size_t table_row_ref::cell_count() const 
-    { 
-        return table_->column_count(); 
-    }
+//========================================================================
+// table_cell_ref implementation
+//========================================================================
 
-    inline table_cell_ref table_row_ref::cell(const table_column_ref& col) const
-    {
-        return table_cell_ref(*this, col);
-    }
- 
-    inline table_partition_ref::table_partition_ref( const table_ref& table, size_t subcat_index )
-        : table_(&table)
-        , subcat_index_(subcat_index)
+    inline table_cell_ref::table_cell_ref(const table_row_ref& row, const table_column_ref& col)
+        : row_(&row), col_(col)
     {
     }
 
-    inline const std::string& table_partition_ref::name() const
+    inline size_t table_cell_ref::row_index() const
     {
-        return table_->partitions().at(subcat_index_).cat->name;
-    }    
-
-    inline size_t table_partition_ref::direct_row_count() const
-    {
-        return table_->partitions().at(subcat_index_).direct_rows.size();
+        return row_->id().val;
     }
 
-    inline size_t table_partition_ref::direct_row_in_table(size_t i) const
+    inline value_ref table_cell_ref::value() const
     {
-        return table_->partitions().at(subcat_index_).direct_rows.at(i);
+        return row_->cell_value(col_.index());
     }
 
-    inline auto table_partition_ref::direct_rows() const
+//========================================================================
+// table_ref implementation
+//========================================================================
+
+    inline table_ref::table_ref(const document* doc, table_id id)
+        : doc_(doc), id_(id)
     {
-        struct row_range
-        {
-            const table_partition_ref* part;
-
-            struct iterator
-            {
-                const table_partition_ref* part;
-                size_t i;
-
-                table_row_ref operator*() const
-                {
-                    size_t row = part->direct_row_in_table(i);
-                    return part->table_->row(row);
-                }
-
-                iterator& operator++()
-                {
-                    ++i;
-                    return *this;
-                }
-
-                bool operator!=(const iterator& other) const
-                {
-                    return i != other.i;
-                }
-            };
-
-            iterator begin() const { return { part, 0 }; }
-            iterator end()   const { return { part, part->direct_row_count() }; }
-        };
-
-        return row_range{ this };
     }
 
-    inline size_t table_partition_ref::row_count() const
+    inline const document::table_node* table_ref::node() const
     {
-        return table_->partitions().at(subcat_index_).all_rows.size();
+        auto table_view = doc_->table(id_);
+        assert(table_view.has_value());
+        return table_view->node;
     }
 
-    inline size_t table_partition_ref::row_in_table(size_t i) const
+    inline bool table_ref::is_valid() const
     {
-        return table_->partitions().at(subcat_index_).all_rows.at(i);
+        return node()->semantic == semantic_state::valid;
     }
 
-    inline size_t table_partition_ref::row_in_parent(size_t i) const
+    inline bool table_ref::is_contaminated() const
     {
-        size_t parent = table_->partitions().at(subcat_index_).parent;
-        if (parent == detail::npos)
-            return i;
-
-        size_t row = row_in_table(i);
-        const auto& parent_rows =
-            table_->partitions().at(parent).all_rows;
-
-        auto it = std::find(parent_rows.begin(), parent_rows.end(), row);
-        return static_cast<size_t>(std::distance(parent_rows.begin(), it));
+        return node()->contamination == contamination_state::contaminated;
     }
 
-    inline bool table_partition_ref::has_parent() const
+    inline document::category_view table_ref::owning_category() const
     {
-        return table_->partitions().at(subcat_index_).parent != detail::npos;
+        return doc_->table(id_)->owner();
     }
 
-    inline table_partition_ref table_partition_ref::parent() const
-    {
-        size_t p = table_->partitions().at(subcat_index_).parent;
-        return table_partition_ref(*table_, p);
-    }
-
-    inline size_t table_partition_ref::child_count() const
-    {
-        return table_->partitions().at(subcat_index_).children.size();
-    }
-
-    inline table_partition_ref table_partition_ref::child(size_t i) const
-    {
-        size_t idx = table_->partitions().at(subcat_index_).children.at(i);
-        return table_partition_ref(*table_, idx);
-    }
-
-    inline auto table_partition_ref::rows() const
-    {
-        struct row_range
-        {
-            const table_partition_ref* part;
-
-            struct iterator
-            {
-                const table_partition_ref* part;
-                size_t i;
-
-                table_row_ref operator*() const
-                {
-                    size_t row = part->row_in_table(i);
-                    return part->table_->row(row);
-                }
-
-                iterator& operator++()
-                {
-                    ++i;
-                    return *this;
-                }
-
-                bool operator!=(const iterator& other) const
-                {
-                    return i != other.i;
-                }
-            };
-
-            iterator begin() const { return { part, 0 }; }
-            iterator end()   const { return { part, part->row_count() }; }
-        };
-
-        return row_range{ this };
-    }
-
-    const std::vector<table_partition_info>& table_ref::partitions() const
-    {
-        if (partitions_.empty())
-            partitions_ = detail::build_partitions(*category_);
-        return partitions_;
-    }
-    
     inline size_t table_ref::column_count() const
     {
-        return category_->table_columns.size();
+        return node()->columns.size();
     }
 
     inline table_column_ref table_ref::column(size_t i) const
     {
-        return table_column_ref(category_->table_columns.at(i), i);
+        const auto& cols = node()->columns;
+        assert(i < cols.size());
+        return table_column_ref(&cols[i], i);
+    }
+
+    inline std::optional<size_t> table_ref::column_index(std::string_view name) const
+    {
+        const auto& cols = node()->columns;
+        for (size_t i = 0; i < cols.size(); ++i)
+        {
+            if (cols[i].name == name)
+                return i;
+        }
+        return std::nullopt;
     }
 
     inline auto table_ref::columns() const
@@ -786,6 +532,18 @@ namespace arf
         return column_range{this};
     }
 
+    inline size_t table_ref::row_count() const
+    {
+        return node()->rows.size();
+    }
+
+    inline table_row_ref table_ref::row(size_t i) const
+    {
+        const auto& row_ids = node()->rows;
+        assert(i < row_ids.size());
+        return table_row_ref(doc_, row_ids[i]);
+    }
+
     inline auto table_ref::rows() const
     {
         struct row_range
@@ -809,24 +567,132 @@ namespace arf
         return row_range{this};
     }
 
-    inline table_partition_ref table_ref::root_subcategory() const
+    inline void table_ref::build_partitions() const
     {
-        return table_partition_ref(*this, 0);
+        if (partitions_built_) return;
+        
+        partitions_.clear();
+        
+        // Root partition
+        auto owner = owning_category();
+        partitions_.push_back({
+            owner.id(),
+            invalid_id<category_tag>(),
+            {},
+            {},
+            {}
+        });
+        
+        // Collect all participating categories
+        std::vector<category_id> stack;
+        stack.push_back(owner.id());
+        
+        auto process_category = [&](auto& self, category_id cat_id) -> void
+        {
+            size_t part_idx = find_partition_index(cat_id);
+            if (part_idx == npos())
+            {
+                category_id parent_id = stack.empty() ? invalid_id<category_tag>() : stack.back();
+                
+                partitions_.push_back({
+                    cat_id,
+                    parent_id,
+                    {},
+                    {},
+                    {}
+                });
+                part_idx = partitions_.size() - 1;
+                
+                if (parent_id != invalid_id<category_tag>())
+                {
+                    size_t parent_idx = find_partition_index(parent_id);
+                    if (parent_idx != npos())
+                        partitions_[parent_idx].children.push_back(cat_id);
+                }
+            }
+            
+            stack.push_back(cat_id);
+            
+            auto cat_view = doc_->category(cat_id);
+            if (cat_view)
+            {
+                for (auto child_id : cat_view->children())
+                    self(self, child_id);
+            }
+            
+            stack.pop_back();
+        };
+        
+        for (auto child_id : owner.children())
+            process_category(process_category, child_id);
+        
+        // Assign rows to partitions
+        for (auto row_id : node()->rows)
+        {
+            auto row_view = doc_->row(row_id);
+            if (!row_view) continue;
+            
+            category_id row_owner = row_view->owner().id();
+            size_t part_idx = find_partition_index(row_owner);
+            
+            if (part_idx != npos())
+                partitions_[part_idx].direct_rows.push_back(row_id);
+        }
+        
+        // Build all_rows bottom-up
+        for (size_t i = partitions_.size(); i-- > 0; )
+        {
+            auto& part = partitions_[i];
+            part.all_rows = part.direct_rows;
+            
+            for (auto child_id : part.children)
+            {
+                size_t child_idx = find_partition_index(child_id);
+                if (child_idx != npos())
+                {
+                    const auto& child_rows = partitions_[child_idx].all_rows;
+                    part.all_rows.insert(part.all_rows.end(), 
+                                        child_rows.begin(), 
+                                        child_rows.end());
+                }
+            }
+        }
+        
+        partitions_built_ = true;
     }
 
-    inline size_t table_ref::subcategory_count() const
+    inline size_t table_ref::find_partition_index(category_id cat_id) const
     {
-        return partitions().size();
+        for (size_t i = 0; i < partitions_.size(); ++i)
+        {
+            if (partitions_[i].cat_id == cat_id)
+                return i;
+        }
+        return npos();
     }
 
-    inline table_partition_ref table_ref::subcategory(size_t i) const
+    inline table_partition_ref table_ref::root_partition() const
     {
-        return table_partition_ref(*this, i);
+        build_partitions();
+        return table_partition_ref(this, owning_category().id());
     }
 
-    inline auto table_ref::subcategories() const
+    inline size_t table_ref::partition_count() const
     {
-        struct subcat_range
+        build_partitions();
+        return partitions_.size();
+    }
+
+    inline table_partition_ref table_ref::partition(size_t i) const
+    {
+        build_partitions();
+        assert(i < partitions_.size());
+        return table_partition_ref(this, partitions_[i].cat_id);
+    }
+
+    inline auto table_ref::partitions() const
+    {
+        struct partition_range
         {
             const table_ref* table;
             
@@ -835,32 +701,178 @@ namespace arf
                 const table_ref* table;
                 size_t index;
                 
-                table_partition_ref operator*() const { return table->subcategory(index); }
+                table_partition_ref operator*() const { return table->partition(index); }
                 iterator& operator++() { ++index; return *this; }
                 bool operator!=(const iterator& other) const { return index != other.index; }
             };
             
             iterator begin() const { return {table, 0}; }
-            iterator end() const { return {table, table->subcategory_count()}; }
+            iterator end() const { return {table, table->partition_count()}; }
         };
         
-        return subcat_range{this};
+        return partition_range{this};
     }
 
-    inline table_partition_ref table_row_ref::subcategory() const
-    {
-        const auto& parts = table_->partitions();
-        
-        for (size_t i = 0; i < parts.size(); ++i)
-        {
-            const auto& rows = parts[i].direct_rows;
-            if (std::find(rows.begin(), rows.end(), row_index_) != rows.end())
-                return table_partition_ref(*table_, i);
-        }
-    
-        // Fallback: root partition
-        return table_partition_ref(*table_, 0);
-    }    
-}
+//========================================================================
+// table_partition_ref implementation
+//========================================================================
 
-#endif
+    inline table_partition_ref::table_partition_ref(const table_ref* table, category_id cat_id)
+        : table_(table), cat_id_(cat_id)
+    {
+        table_->build_partitions();
+    }
+
+    inline const document* table_partition_ref::doc() const
+    {
+        return table_->document();
+    }
+
+    inline document::category_view table_partition_ref::category() const
+    {
+        auto cat = doc()->category(cat_id_);
+        assert(cat.has_value());
+        return *cat;
+    }
+
+    inline std::string_view table_partition_ref::name() const
+    {
+        return category().name();
+    }
+
+    inline size_t table_partition_ref::direct_row_count() const
+    {
+        size_t idx = table_->find_partition_index(cat_id_);
+        assert(idx != npos());
+        return table_->partitions_[idx].direct_rows.size();
+    }
+
+    inline table_row_ref table_partition_ref::direct_row(size_t i) const
+    {
+        size_t idx = table_->find_partition_index(cat_id_);
+        assert(idx != npos());
+        const auto& rows = table_->partitions_[idx].direct_rows;
+        assert(i < rows.size());
+        return table_row_ref(doc(), rows[i]);
+    }
+
+    inline auto table_partition_ref::direct_rows() const
+    {
+        struct row_range
+        {
+            const table_partition_ref* part;
+            
+            struct iterator
+            {
+                const table_partition_ref* part;
+                size_t index;
+                
+                table_row_ref operator*() const { return part->direct_row(index); }
+                iterator& operator++() { ++index; return *this; }
+                bool operator!=(const iterator& other) const { return index != other.index; }
+            };
+            
+            iterator begin() const { return {part, 0}; }
+            iterator end() const { return {part, part->direct_row_count()}; }
+        };
+        
+        return row_range{this};
+    }
+
+    inline size_t table_partition_ref::row_count() const
+    {
+        size_t idx = table_->find_partition_index(cat_id_);
+        assert(idx != npos());
+        return table_->partitions_[idx].all_rows.size();
+    }
+
+    inline table_row_ref table_partition_ref::row(size_t i) const
+    {
+        size_t idx = table_->find_partition_index(cat_id_);
+        assert(idx != npos());
+        const auto& rows = table_->partitions_[idx].all_rows;
+        assert(i < rows.size());
+        return table_row_ref(doc(), rows[i]);
+    }
+
+    inline auto table_partition_ref::rows() const
+    {
+        struct row_range
+        {
+            const table_partition_ref* part;
+            
+            struct iterator
+            {
+                const table_partition_ref* part;
+                size_t index;
+                
+                table_row_ref operator*() const { return part->row(index); }
+                iterator& operator++() { ++index; return *this; }
+                bool operator!=(const iterator& other) const { return index != other.index; }
+            };
+            
+            iterator begin() const { return {part, 0}; }
+            iterator end() const { return {part, part->row_count()}; }
+        };
+        
+        return row_range{this};
+    }
+
+    inline bool table_partition_ref::has_parent() const
+    {
+        size_t idx = table_->find_partition_index(cat_id_);
+        assert(idx != npos());
+        return table_->partitions_[idx].parent_id != invalid_id<category_tag>();
+    }
+
+    inline table_partition_ref table_partition_ref::parent() const
+    {
+        size_t idx = table_->find_partition_index(cat_id_);
+        assert(idx != npos());
+        category_id parent_id = table_->partitions_[idx].parent_id;
+        assert(parent_id != invalid_id<category_tag>());
+        return table_partition_ref(table_, parent_id);
+    }
+
+    inline size_t table_partition_ref::child_count() const
+    {
+        size_t idx = table_->find_partition_index(cat_id_);
+        assert(idx != npos());
+        return table_->partitions_[idx].children.size();
+    }
+
+    inline table_partition_ref table_partition_ref::child(size_t i) const
+    {
+        size_t idx = table_->find_partition_index(cat_id_);
+        assert(idx != npos());
+        const auto& children = table_->partitions_[idx].children;
+        assert(i < children.size());
+        return table_partition_ref(table_, children[i]);
+    }
+
+    inline auto table_partition_ref::children() const
+    {
+        struct child_range
+        {
+            const table_partition_ref* part;
+            
+            struct iterator
+            {
+                const table_partition_ref* part;
+                size_t index;
+                
+                table_partition_ref operator*() const { return part->child(index); }
+                iterator& operator++() { ++index; return *this; }
+                bool operator!=(const iterator& other) const { return index != other.index; }
+            };
+            
+            iterator begin() const { return {part, 0}; }
+            iterator end() const { return {part, part->child_count()}; }
+        };
+        
+        return child_range{this};
+    }
+
+} // namespace arf
+
+#endif // ARF_REFLECT_HPP

@@ -8,6 +8,7 @@
 // * Columns with invalid types must be marked as such. They will collapse to strings and this overwrites the type. That the type was invalid must be preserved.
 // * Cells with invalid type resolutions must be marked as such.
 // * Currently rows of invalid arity are rejected. This data must be preserved.
+// * There may be name conflicts when children to rejected categories are attached the next valid ancestor. This must be handled.
 
 #ifndef ARF_MATERIALISE_HPP
 #define ARF_MATERIALISE_HPP
