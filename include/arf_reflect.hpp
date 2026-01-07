@@ -232,6 +232,10 @@ namespace arf::reflect
                 if (!k)
                     return std::nullopt;
 
+                ctx.category.reset();
+                ctx.table.reset();
+                ctx.row.reset();
+                ctx.column.reset();
                 ctx.value = &k->value();
             }
 
@@ -271,6 +275,20 @@ namespace arf::reflect
                 ctx.value = nullptr;
 
                 if (!ctx.row)
+                    return std::nullopt;
+
+                // ownership validation
+                bool owned = false;
+                for (auto rid : ctx.table->rows())
+                {
+                    if (rid == s->id)
+                    {
+                        owned = true;
+                        break;
+                    }
+                }
+
+                if (!owned)
                     return std::nullopt;
             }
 
@@ -319,4 +337,4 @@ namespace arf::reflect
 
 } // namespace arf::reflect
 
-#endif // ARF_REFLECT_H__
+#endif // ARF_REFLECT_HPP

@@ -19,12 +19,17 @@ static bool reflect_empty_address_yields_no_value()
 
 static bool reflect_nested_category_key()
 {
-    auto ctx = load("a:\n  b:\n    x = 1\n");
+    using namespace arf::reflect;
+
+    auto ctx = load(
+        "a:\n"
+        "  b:\n"
+        "    x = 1\n");
 
     auto v =
-        arf::reflect::resolve(
+        resolve(
             ctx.document,
-            arf::reflect::root()
+                root()
                 .category("a")
                 .category("b")
                 .key("x")
@@ -37,6 +42,8 @@ static bool reflect_nested_category_key()
 
 static bool reflect_table_cell_by_column_name()
 {
+    using namespace arf::reflect;
+
     auto ctx = load(
         "a:\n"
         "  # x y\n"
@@ -64,6 +71,8 @@ static bool reflect_table_cell_by_column_name()
 
 static bool reflect_invalid_column_fails()
 {
+    using namespace arf::reflect;
+
     auto ctx = load(
         "a:\n"
         "  # x\n"
@@ -75,9 +84,9 @@ static bool reflect_invalid_column_fails()
     auto rid = ctx.document.table(tid)->rows()[0];
 
     auto v =
-        arf::reflect::resolve(
+        resolve(
             ctx.document,
-            arf::reflect::root()
+                root()
                 .category("a")
                 .table(tid)
                 .row(rid)
@@ -90,12 +99,14 @@ static bool reflect_invalid_column_fails()
 
 static bool reflect_array_index()
 {
+    using namespace arf::reflect;
+
     auto ctx = load("a:\n  x:int[] = 1|2|3\n");
 
     auto v =
-        arf::reflect::resolve(
+        resolve(
             ctx.document,
-            arf::reflect::root()
+                root()
                 .category("a")
                 .key("x")
                 .index(2)
