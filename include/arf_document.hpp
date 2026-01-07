@@ -235,6 +235,9 @@ namespace arf
         std::span<const column_id> columns() const noexcept { return node->columns; }
         std::span<const table_row_id> rows() const noexcept { return node->rows; }
 
+        std::optional<column_view> column( column_id id ) const noexcept;
+        std::optional<column_view> column( std::string_view name ) const noexcept;
+
         category_view owner() const noexcept;
         std::optional<size_t> column_index(std::string_view name) const noexcept;        
         std::optional<size_t> column_index(column_id id) const noexcept;        
@@ -458,6 +461,21 @@ namespace arf
     document::category_view document::table_row_view::owner() const noexcept { return *doc->to_view(doc->categories_, doc->find_node_by_id(doc->categories_, node->owner)); }
     document::table_view    document::table_row_view::table() const noexcept { return *doc->to_view(doc->tables_,     doc->find_node_by_id(doc->tables_,     node->table)); }
     document::category_view document::key_view::owner()       const noexcept { return *doc->to_view(doc->categories_, doc->find_node_by_id(doc->categories_, node->owner)); }
+
+    std::optional<document::column_view> document::table_view::column( column_id id ) const noexcept
+    {
+        for (auto col_id : columns())
+            if (col_id == id)
+                return doc->column(id);
+        return std::nullopt;
+    }
+    std::optional<document::column_view> document::table_view::column( std::string_view name ) const noexcept
+    {
+        for (auto col_id : columns())
+            if (auto col = doc->column(col_id); col->name() == name)
+                return col;
+        return std::nullopt;
+    }
 
     size_t document::column_view::index() const noexcept
     {
