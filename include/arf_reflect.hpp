@@ -7,14 +7,13 @@
 // There are no node identities, no row indices, no cell objects.
 // Only values exist. Everything else is an address that can reach them.
 
-#ifndef ARF_REFLECT_H__
-#define ARF_REFLECT_H__
 #ifndef ARF_REFLECT_HPP
 #define ARF_REFLECT_HPP
 
 #include "arf_core.hpp"
 #include "arf_document.hpp"
 
+#include <array>
 #include <variant>
 #include <vector>
 #include <optional>
@@ -27,9 +26,14 @@ namespace arf::reflect
     // address steps
     // ------------------------------------------------------------
 
-    struct category_step
+    struct top_category_step
     {
-        std::variant<category_id, std::string_view> id;
+        std::string_view name;
+    };
+
+    struct sub_category_step
+    {
+        std::string_view name;
     };
 
     struct key_step
@@ -59,7 +63,8 @@ namespace arf::reflect
 
     using address_step =
         std::variant<
-            category_step,
+            top_category_step,
+            sub_category_step,
             key_step,
             table_step,
             row_step,
@@ -75,15 +80,15 @@ namespace arf::reflect
     {
         std::vector<address_step> steps;
 
-        address& category(category_id id)
+        address& top(std::string_view name)
         {
-            steps.push_back(category_step{ id });
+            steps.push_back(top_category_step{ name });
             return *this;
         }
 
-        address& category(std::string_view name)
+        address& sub(std::string_view name)
         {
-            steps.push_back(category_step{ name });
+            steps.push_back(sub_category_step{ name });
             return *this;
         }
 
@@ -142,18 +147,79 @@ namespace arf::reflect
     }
 
     // ------------------------------------------------------------
-    // resolution context
+    // resolve errors
+    // ------------------------------------------------------------
+
+    enum class resolve_error_kind
+    {
+    // Missing context
+        no_category_context,
+        no_table_context,
+        no_row_context,
+
+    // Malformed address
+        structure_after_value, 
+        top_category_after_category,
+
+    // Missing structure
+        top_category_not_found,
+        sub_category_not_found,
+        key_not_found,
+        table_not_found,
+        row_not_owned,
+        column_not_found,
+
+    // Type error
+        not_an_array,
+        index_out_of_bounds,
+        __LAST
+    };
+
+    constexpr std::array<std::string_view, static_cast<size_t>(resolve_error_kind::__LAST)> 
+    resolve_error_string =
+    {
+        "no_category_context",
+        "no_table_context",
+        "no_row_context",
+        "structure_after_value," 
+        "top_category_after_category",
+        "top_category_not_found",
+        "sub_category_not_found",
+        "key_not_found",
+        "table_not_found",
+        "row_not_owned",
+        "column_not_found",
+        "not_an_array",
+        "index_out_of_bounds"
+    };
+
+
+    struct resolve_error
+    {
+        size_t             step_index;
+        resolve_error_kind kind;
+    };
+
+    // ------------------------------------------------------------
+    // resolve context
     // ------------------------------------------------------------
 
     struct resolve_context
     {
         const document* doc = nullptr;
 
-        std::optional<document::category_view> category;
-        std::optional<document::table_view>    table;
+        std::optional<document::category_view>  category;
+        std::optional<document::table_view>     table;
         std::optional<document::table_row_view> row;
-        std::optional<document::column_view>   column;
-        const typed_value*           value = nullptr;
+        std::optional<document::column_view>    column;
+        const typed_value*                      value = nullptr;
+
+        std::vector<resolve_error> errors;
+
+        bool has_errors() const
+        {
+            return !errors.empty();
+        }
     };
 
     // ------------------------------------------------------------
@@ -170,80 +236,131 @@ namespace arf::reflect
         return tbls[ordinal];
     }
 
-    inline bool is_array( value_type v )
+    inline bool is_array(value_type v)
     {
-        return v == value_type::string_array || v == value_type::int_array || v == value_type::float_array;
+        return v == value_type::string_array
+            || v == value_type::int_array
+            || v == value_type::float_array;
     }
-
 
     // ------------------------------------------------------------
     // resolve
     // ------------------------------------------------------------
 
     inline std::optional<const typed_value*>
-    resolve(const document& doc, const address& addr)
+    resolve(resolve_context& ctx, const address& addr)
     {
-        resolve_context ctx;
-        ctx.doc = &doc;
-        ctx.category = doc.root();
+        ctx.errors.clear();
+        ctx.value = nullptr;
+        ctx.table.reset();
+        ctx.row.reset();
+        ctx.column.reset();
+
+        ctx.doc = ctx.doc ? ctx.doc : nullptr;
+
+        if (!ctx.doc)
+            return std::nullopt;
+
+        ctx.category = ctx.doc->root();
 
         if (addr.steps.empty())
             return std::nullopt;
 
-        for (const auto& step : addr.steps)
+        for (size_t i = 0; i < addr.steps.size(); ++i)
         {
-            // ---------------- category
-            if (auto s = std::get_if<category_step>(&step))
-            {
-                if (!ctx.category)
-                    return std::nullopt;
-
-                if (std::holds_alternative<category_id>(s->id))
-                {
-                    ctx.category = doc.category(std::get<category_id>(s->id));
-                }
-                else
-                {
-                    ctx.category = ctx.category->child(std::get<std::string_view>(s->id));
-                }
-
-                ctx.table.reset();
-                ctx.row.reset();
-                ctx.column.reset();
-                ctx.value = nullptr;
-
-                if (!ctx.category)
-                    return std::nullopt;
-            }
+            const auto& step = addr.steps[i];
 
             // ---------------- key
-            else if (auto s = std::get_if<key_step>(&step))
+            if (auto s = std::get_if<key_step>(&step))
             {
                 if (!ctx.category)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::no_category_context });
                     return std::nullopt;
+                }
 
                 std::optional<document::key_view> k;
 
                 if (std::holds_alternative<key_id>(s->id))
-                    k = doc.key(std::get<key_id>(s->id));
+                    k = ctx.doc->key(std::get<key_id>(s->id));
                 else
                     k = ctx.category->key(std::get<std::string_view>(s->id));
 
                 if (!k)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::key_not_found });
                     return std::nullopt;
+                }
 
-                ctx.category.reset();
+                ctx.value = &k->value();
+                // do NOT touch category / table / row / column yet
+            }
+
+            // ---------------- top category
+            else if (auto s = std::get_if<top_category_step>(&step))
+            {
+                // Note: category navigation is legal after key
+
+                // top() is only legal before any category navigation
+                if (ctx.category && ctx.category->id() != ctx.doc->root()->id())
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::top_category_after_category });
+                    return std::nullopt;
+                }
+
+                auto next = ctx.doc->root()->child(s->name);
+                if (!next)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::top_category_not_found });
+                    return std::nullopt;
+                }
+
+                ctx.category = next;
                 ctx.table.reset();
                 ctx.row.reset();
                 ctx.column.reset();
-                ctx.value = &k->value();
+                ctx.value = nullptr;
+            }
+
+            // ---------------- sub category
+            else if (auto s = std::get_if<sub_category_step>(&step))
+            {
+                // Note: category navigation is legal after key
+
+                if (!ctx.category || ctx.category->id() == ctx.doc->root()->id())
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::no_category_context });
+                    return std::nullopt;
+                }
+
+                auto next = ctx.category->child(s->name);
+                if (!next)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::sub_category_not_found });
+                    return std::nullopt;
+                }
+
+                ctx.category = next;
+                ctx.table.reset();
+                ctx.row.reset();
+                ctx.column.reset();
+                ctx.value = nullptr;
             }
 
             // ---------------- table
             else if (auto s = std::get_if<table_step>(&step))
             {
-                if (!ctx.category)
+                if (ctx.value)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::structure_after_value });
                     return std::nullopt;
+                }
+
+                if (!ctx.category)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::no_category_context });
+                    return std::nullopt;
+                }
 
                 std::optional<table_id> tid;
 
@@ -253,31 +370,45 @@ namespace arf::reflect
                     tid = resolve_table_ordinal(*ctx.category, std::get<size_t>(s->id));
 
                 if (!tid)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::table_not_found });
                     return std::nullopt;
+                }
 
-                ctx.table = doc.table(*tid);
+                ctx.table = ctx.doc->table(*tid);
+                if (!ctx.table)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::table_not_found });
+                    return std::nullopt;
+                }
+
                 ctx.row.reset();
                 ctx.column.reset();
                 ctx.value = nullptr;
-
-                if (!ctx.table)
-                    return std::nullopt;
             }
 
             // ---------------- row
             else if (auto s = std::get_if<row_step>(&step))
             {
+                if (ctx.value)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::structure_after_value });
+                    return std::nullopt;
+                }
+
                 if (!ctx.table)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::no_table_context });
                     return std::nullopt;
+                }
 
-                ctx.row = doc.row(s->id);
-                ctx.column.reset();
-                ctx.value = nullptr;
-
+                ctx.row = ctx.doc->row(s->id);
                 if (!ctx.row)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::no_row_context });
                     return std::nullopt;
+                }
 
-                // ownership validation
                 bool owned = false;
                 for (auto rid : ctx.table->rows())
                 {
@@ -289,27 +420,44 @@ namespace arf::reflect
                 }
 
                 if (!owned)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::row_not_owned });
                     return std::nullopt;
+                }
+
+                ctx.column.reset();
+                ctx.value = nullptr;
             }
 
             // ---------------- column
             else if (auto s = std::get_if<column_step>(&step))
             {
-                if (!ctx.table || !ctx.row)
+                if (ctx.value)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::structure_after_value });
                     return std::nullopt;
+                }
+
+                if (!ctx.table || !ctx.row)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::no_row_context });
+                    return std::nullopt;
+                }
 
                 std::optional<document::column_view> col;
 
                 if (std::holds_alternative<column_id>(s->id))
-                    col = doc.column(std::get<column_id>(s->id));
+                    col = ctx.doc->column(std::get<column_id>(s->id));
                 else
                     col = ctx.table->column(std::get<std::string_view>(s->id));
 
                 if (!col)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::column_not_found });
                     return std::nullopt;
+                }
 
                 ctx.column = col;
-
                 auto idx = col->index();
                 ctx.value = &ctx.row->cells()[idx];
             }
@@ -318,21 +466,37 @@ namespace arf::reflect
             else if (auto s = std::get_if<index_step>(&step))
             {
                 if (!ctx.value)
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::not_an_array });
                     return std::nullopt;
+                }
 
                 if (!is_array(ctx.value->type))
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::not_an_array });
                     return std::nullopt;
+                }
 
                 auto& arr = std::get<std::vector<typed_value>>(ctx.value->val);
 
                 if (s->index >= arr.size())
+                {
+                    ctx.errors.push_back({ i, resolve_error_kind::index_out_of_bounds });
                     return std::nullopt;
+                }
 
                 ctx.value = &arr[s->index];
             }
         }
 
         return ctx.value;
+    }
+
+    inline std::optional<const typed_value*>
+    resolve_ex(resolve_context& ctx, const address& addr)
+    {
+        auto result = resolve(ctx, addr);
+        return ctx.has_errors() ? std::nullopt : result;
     }
 
 } // namespace arf::reflect
