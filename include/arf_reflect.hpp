@@ -14,6 +14,7 @@
 #include "arf_document.hpp"
 
 #include <array>
+#include <utility>
 #include <variant>
 #include <vector>
 #include <optional>
@@ -21,6 +22,7 @@
 
 namespace arf::reflect
 {
+// #define SHOW_STEP_CTOR
 
     // ------------------------------------------------------------
     // address steps
@@ -28,44 +30,88 @@ namespace arf::reflect
 
     struct top_category_step
     {
+#ifdef SHOW_STEP_CTOR        
+        explicit top_category_step(std::string_view n) : name(n)  {
+            std::cout << "Constructing top_category_step with name = " << name << std::endl;
+        }
+#endif        
         std::string_view name;
     };
 
     struct sub_category_step
     {
+#ifdef SHOW_STEP_CTOR        
+        explicit sub_category_step(std::string_view n) : name(n)  {
+            std::cout << "Constructing sub_category_step with name = " << name << std::endl;
+        }
+#endif            
         std::string_view name;
     };
 
     struct key_step
     {
+#ifdef SHOW_STEP_CTOR        
+        explicit key_step(key_id id) : id(id) {
+            std::cout << "Constructing key_step from key_id with ID = " << id << std::endl;
+        }
+        explicit key_step(std::string_view n) : id(n) {
+            std::cout << "Constructing key_step from string with name = " << n << std::endl;
+        }
+#endif            
         std::variant<key_id, std::string_view> id;
     };
 
     struct table_step
     {
+#ifdef SHOW_STEP_CTOR        
+        explicit table_step(table_id id) : id(id) {
+            std::cout << "Constructing table_step from table_id with ID = " << id << std::endl;
+        }
+        explicit table_step(size_t loc_idx) : id(loc_idx) {
+            std::cout << "Constructing table_step from size_t with local index = " << loc_idx << std::endl;
+        }
+#endif            
         std::variant<table_id, size_t> id; // id or local ordinal
     };
 
     struct row_step
     {
+#ifdef SHOW_STEP_CTOR        
+        explicit row_step(table_row_id id) : id(id) {
+            std::cout << "Constructing row_step from table_row_id with ID = " << id << std::endl;
+        }
+#endif            
         table_row_id id;
     };
 
     struct column_step
     {
+#ifdef SHOW_STEP_CTOR        
+        explicit column_step(column_id id) : id(id) {
+            std::cout << "Constructing column_step from column_id with ID = " << id << std::endl;
+        }
+        explicit column_step(std::string_view name) : id(name) {
+            std::cout << "Constructing column_step from string with name = " << name << std::endl;
+        }
+#endif            
         std::variant<column_id, std::string_view> id;
     };
 
     struct index_step
     {
+#ifdef SHOW_STEP_CTOR        
+        explicit index_step(size_t idx) : index(idx) {
+            std::cout << "Constructing index_step from size_t with index = " << index << std::endl;
+        }
+#endif            
         size_t index;
     };
 
     using address_step =
         std::variant<
+            key_step,
             top_category_step,
             sub_category_step,
-            key_step,
             table_step,
             row_step,
             column_step,
@@ -82,61 +128,61 @@ namespace arf::reflect
 
         address& top(std::string_view name)
         {
-            steps.push_back(top_category_step{ name });
+            steps.emplace_back(std::in_place_type<top_category_step>, name);
             return *this;
         }
 
         address& sub(std::string_view name)
         {
-            steps.push_back(sub_category_step{ name });
+            steps.emplace_back(std::in_place_type<sub_category_step>, name);
             return *this;
         }
 
         address& key(key_id id)
         {
-            steps.push_back(key_step{ id });
+            steps.emplace_back(std::in_place_type<key_step>, id);
             return *this;
         }
 
         address& key(std::string_view name)
         {
-            steps.push_back(key_step{ name });
+            steps.emplace_back(std::in_place_type<key_step>, name);
             return *this;
         }
 
         address& table(table_id id)
         {
-            steps.push_back(table_step{ id });
+            steps.emplace_back(std::in_place_type<table_step>, id);
             return *this;
         }
 
         address& local_table(size_t ordinal)
         {
-            steps.push_back(table_step{ ordinal });
+            steps.emplace_back(std::in_place_type<table_step>, ordinal);
             return *this;
         }
 
         address& row(table_row_id id)
         {
-            steps.push_back(row_step{ id });
+            steps.emplace_back(std::in_place_type<row_step>, id);
             return *this;
         }
 
         address& column(column_id id)
         {
-            steps.push_back(column_step{ id });
+            steps.emplace_back(std::in_place_type<column_step>, id);
             return *this;
         }
 
         address& column(std::string_view name)
         {
-            steps.push_back(column_step{ name });
+            steps.emplace_back(std::in_place_type<column_step>, name);
             return *this;
         }
 
         address& index(size_t i)
         {
-            steps.push_back(index_step{ i });
+            steps.emplace_back(std::in_place_type<index_step>, i);
             return *this;
         }
     };

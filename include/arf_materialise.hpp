@@ -56,7 +56,7 @@ namespace arf
     };
 
     constexpr std::array<std::string_view, static_cast<size_t>(semantic_error_kind::__LAST)> 
-    error_string =
+    semantic_error_string =
     {
         "unknown type",
         "type mismatch",
@@ -123,7 +123,7 @@ namespace arf
             out_.errors.push_back({ what, loc, std::string(msg) });
             if (opts_.echo_errors)
                 std::cout << "Error #" << std::to_string(static_cast<int>(what)) 
-                        << ": " << error_string[static_cast<size_t>(what)] 
+                        << ": " << semantic_error_string[static_cast<size_t>(what)] 
                         << ". Message: " << msg << "\n";
         }
 
@@ -841,7 +841,9 @@ namespace
         auto rid = std::get<table_row_id>(ev.target);
         const auto& cst_row = cst_.rows[rid.val];
 
-        auto& tbl = doc_.tables_[active_table_->val];
+        auto it = doc_.find_node_by_id(doc_.tables_, *active_table_);
+        assert(it != doc_.tables_.end());
+        auto & tbl = *it;
 
         if (cst_row.cells.size() != tbl.columns.size())
         {

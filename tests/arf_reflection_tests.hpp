@@ -71,8 +71,8 @@ static bool reflect_explicit_subcategory_key()
     using namespace arf::reflect;
 
     auto ctx = load(
-        "a:\n"
-        "  :b:\n"
+        "a:\n"          // <- top-cateogory:
+        "  :b\n"        // <- :sub-category
         "    x = 1\n"
     );
 
@@ -134,7 +134,7 @@ static bool reflect_top_level_category_does_not_nest()
 
     auto ctx = load(
         "a:\n"
-        "  :b:\n"
+        "  :b\n"
         "    x = 1\n"
     );
 
@@ -168,13 +168,14 @@ static bool reflect_table_cell_by_column_name()
 
     auto ctx = load(
         "a:\n"
-        "  # x y\n"
-        "    1 2\n"
+        "  # x  y\n"
+        "    1  2\n"
     );
 
     auto cat = ctx.document.category("a");
     auto tid = cat->tables()[0];
     auto rid = ctx.document.table(tid)->rows()[0];
+    auto cid = ctx.document.table(tid)->columns()[0];
 
     resolve_context rctx;
     rctx.doc = &ctx.document;
@@ -193,7 +194,21 @@ static bool reflect_table_cell_by_column_name()
         dump_resolve_errors(rctx);
 
     EXPECT(v.has_value(), "cell not resolved");
-    EXPECT((**v).type == value_type::integer, "wrong cell type");
+
+    value_type colt = ctx.document.column(cid)->type();
+    value_type celt = (**v).type;
+
+    EXPECT(celt != value_type::unresolved, "cell must be materialised" );
+
+    if (colt == value_type::unresolved)
+    {
+        EXPECT(celt != value_type::unresolved, "cell must be materialised" );
+        EXPECT(celt == value_type::string, "cells of unresolved columns should be typed to string");
+    }
+    else
+    {
+        EXPECT(celt == ctx.document.column(cid)->type(), "cell type must match column type");
+    }
     EXPECT(!rctx.has_errors(), "unexpected errors during table cell resolution");
     return true;
 }
@@ -227,10 +242,8 @@ static bool reflect_invalid_column_fails()
 
     EXPECT(!v.has_value(), "invalid column must not resolve");
     EXPECT(rctx.has_errors(), "missing error for invalid column");
-    EXPECT(
-        rctx.errors[0].kind == resolve_error_kind::column_not_found,
-        "wrong error kind for invalid column"
-    );
+    EXPECT(rctx.errors[0].kind == resolve_error_kind::column_not_found, "wrong error kind for invalid column");
+
     return true;
 }
 

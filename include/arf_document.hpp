@@ -222,6 +222,10 @@ namespace arf
         std::optional<category_view> child(std::string_view name) const noexcept;
         std::optional<key_view> key(std::string_view name) const noexcept;
 
+        size_t children_count() const noexcept { return node->children.size(); }
+        size_t tables_count() const noexcept { return node->tables.size(); }
+        size_t keys_count() const noexcept { return node->keys.size(); }
+
         bool is_locally_valid() const noexcept { return node->semantic == semantic_state::valid; }
         bool is_contaminated() const noexcept { return node->contamination == contamination_state::contaminated; }
     };
@@ -234,6 +238,9 @@ namespace arf
         table_id id() const noexcept { return node->id; }
         std::span<const column_id> columns() const noexcept { return node->columns; }
         std::span<const table_row_id> rows() const noexcept { return node->rows; }
+
+        size_t column_count() const noexcept { return node->columns.size(); }
+        size_t row_count() const noexcept { return node->rows.size(); }
 
         std::optional<column_view> column( column_id id ) const noexcept;
         std::optional<column_view> column( std::string_view name ) const noexcept;
@@ -285,7 +292,12 @@ namespace arf
         key_id id() const noexcept { return node->id; }
         const std::string& name() const noexcept { return node->name; }
         const typed_value& value() const noexcept { return node->value; }
+        
         category_view owner() const noexcept;
+        
+        bool is_array() const noexcept { auto v = node->value.type; return v == value_type::string_array || v == value_type::int_array || v == value_type::float_array; }
+        size_t indices() const noexcept;
+
         bool is_locally_valid() const noexcept { return node->semantic == semantic_state::valid; }
         bool is_contaminated() const noexcept { return node->contamination == contamination_state::contaminated; }
     };
@@ -454,6 +466,14 @@ namespace arf
                 return k_view;
         return std::nullopt;
     }
+
+    size_t document::key_view::indices() const noexcept 
+    { 
+        if (is_array())
+            return std::get<std::vector<typed_value>>(node->value.val).size();
+        return 0;
+    }
+
 
     document::category_view document::table_view::owner()     const noexcept { return *doc->to_view(doc->categories_, doc->find_node_by_id(doc->categories_, node->owner)); }
     document::category_view document::column_view::owner()    const noexcept { return *doc->to_view(doc->categories_, doc->find_node_by_id(doc->categories_, node->owner)); }
