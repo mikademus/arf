@@ -22,88 +22,213 @@
 
 namespace arf::reflect
 {
-// #define SHOW_STEP_CTOR
+#define SHOW_STEP_CTOR
 
-    // ------------------------------------------------------------
-    // address steps
-    // ------------------------------------------------------------
+// ------------------------------------------------------------
+// address step diagnostics
+// ------------------------------------------------------------
+
+    enum class step_state : uint8_t
+    {
+        ok,
+        unresolved,
+        error
+    };
+
+    enum class step_error : uint8_t
+    {
+        none,
+
+    // Missing context
+        no_context_value,
+        no_category_context,
+        no_table_context,
+        no_row_context,    
+
+    // Malformed address
+        top_category_after_category,
+        structure_after_value,
+        sub_category_under_root, 
+
+    // Missing structure
+        top_category_not_found,
+        sub_category_not_found,
+        key_not_found,
+        table_not_found,
+        row_not_found,
+        column_not_found,
+
+        row_not_owned,
+
+    // Type error
+        not_a_table,
+        not_a_row,
+        not_an_array,
+        index_out_of_bounds,
+
+        __LAST
+    };
+
+    constexpr std::array<std::string_view, static_cast<size_t>(step_error::__LAST)> 
+    step_error_string =
+    {
+        "none",
+        "no_context_value",
+        "no_category_context",
+        "no_table_context",
+        "no_row_context", 
+        "top_category_after_category",
+        "structure_after_value",
+        "sub_category_under_root",
+        "top_category_not_found",
+        "sub_category_not_found",
+        "key_not_found",
+        "table_not_found",
+        "row_not_found",
+        "column_not_found",
+        "row_not_owned",
+        "not_a_table",
+        "not_a_row",
+        "not_an_array",
+        "index_out_of_bounds"
+    };
+
+    struct step_diagnostic
+    {
+        step_state state = step_state::ok;
+        step_error error = step_error::none;
+    };
+
+// ------------------------------------------------------------
+// inspection results
+// ------------------------------------------------------------
+
+     using inspected_item =
+        std::variant<
+            std::monostate,
+            document::category_view,
+            document::table_view,
+            document::table_row_view,
+            document::column_view,
+            document::key_view,
+            const typed_value*
+        >;
+
+    struct inspected
+    {
+        inspected_item item;
+
+        // final resolved value (if any)
+        const typed_value* value = nullptr;
+
+        // step-by-step diagnostics
+        std::vector<step_diagnostic> steps;
+
+        bool ok() const noexcept
+        {
+            return std::all_of(
+                steps.begin(),
+                steps.end(),
+                [](auto& s) { return s.state == step_state::ok; }
+            );
+        }
+    };
+
+// ------------------------------------------------------------
+// address steps
+// ------------------------------------------------------------
 
     struct top_category_step
     {
-#ifdef SHOW_STEP_CTOR        
-        explicit top_category_step(std::string_view n) : name(n)  {
+        explicit top_category_step(std::string_view n) : name(n)  
+        {
+        #ifdef SHOW_STEP_CTOR        
             std::cout << "Constructing top_category_step with name = " << name << std::endl;
+        #endif        
         }
-#endif        
         std::string_view name;
     };
 
     struct sub_category_step
     {
-#ifdef SHOW_STEP_CTOR        
-        explicit sub_category_step(std::string_view n) : name(n)  {
+        explicit sub_category_step(std::string_view n) : name(n)  
+        {
+        #ifdef SHOW_STEP_CTOR        
             std::cout << "Constructing sub_category_step with name = " << name << std::endl;
+        #endif            
         }
-#endif            
         std::string_view name;
     };
 
     struct key_step
     {
-#ifdef SHOW_STEP_CTOR        
-        explicit key_step(key_id id) : id(id) {
+        explicit key_step(key_id id) : id(id) 
+        {
+        #ifdef SHOW_STEP_CTOR        
             std::cout << "Constructing key_step from key_id with ID = " << id << std::endl;
+        #endif            
         }
         explicit key_step(std::string_view n) : id(n) {
+        #ifdef SHOW_STEP_CTOR        
             std::cout << "Constructing key_step from string with name = " << n << std::endl;
+        #endif            
         }
-#endif            
         std::variant<key_id, std::string_view> id;
     };
 
     struct table_step
     {
-#ifdef SHOW_STEP_CTOR        
-        explicit table_step(table_id id) : id(id) {
+        explicit table_step(table_id id) : id(id) 
+        {
+        #ifdef SHOW_STEP_CTOR        
             std::cout << "Constructing table_step from table_id with ID = " << id << std::endl;
+        #endif            
         }
-        explicit table_step(size_t loc_idx) : id(loc_idx) {
+        explicit table_step(size_t loc_idx) : id(loc_idx) 
+        {
+        #ifdef SHOW_STEP_CTOR        
             std::cout << "Constructing table_step from size_t with local index = " << loc_idx << std::endl;
+        #endif            
         }
-#endif            
         std::variant<table_id, size_t> id; // id or local ordinal
     };
 
     struct row_step
     {
-#ifdef SHOW_STEP_CTOR        
-        explicit row_step(table_row_id id) : id(id) {
+        explicit row_step(table_row_id id) : id(id) 
+        {
+        #ifdef SHOW_STEP_CTOR        
             std::cout << "Constructing row_step from table_row_id with ID = " << id << std::endl;
+        #endif            
         }
-#endif            
         table_row_id id;
     };
 
     struct column_step
     {
-#ifdef SHOW_STEP_CTOR        
-        explicit column_step(column_id id) : id(id) {
+        explicit column_step(column_id id) : id(id) 
+        {
+        #ifdef SHOW_STEP_CTOR        
             std::cout << "Constructing column_step from column_id with ID = " << id << std::endl;
+        #endif            
         }
-        explicit column_step(std::string_view name) : id(name) {
+        explicit column_step(std::string_view name) : id(name) 
+        {
+        #ifdef SHOW_STEP_CTOR        
             std::cout << "Constructing column_step from string with name = " << name << std::endl;
+        #endif            
         }
-#endif            
         std::variant<column_id, std::string_view> id;
     };
 
     struct index_step
     {
-#ifdef SHOW_STEP_CTOR        
-        explicit index_step(size_t idx) : index(idx) {
+        explicit index_step(size_t idx) : index(idx) 
+        {
+        #ifdef SHOW_STEP_CTOR        
             std::cout << "Constructing index_step from size_t with index = " << index << std::endl;
+        #endif            
         }
-#endif            
         size_t index;
     };
 
@@ -192,85 +317,24 @@ namespace arf::reflect
         return address{};
     }
 
-    // ------------------------------------------------------------
-    // resolve errors
-    // ------------------------------------------------------------
+// ------------------------------------------------------------
+// inspect context
+// ------------------------------------------------------------
 
-    enum class resolve_error_kind
-    {
-    // Missing context
-        no_category_context,
-        no_table_context,
-        no_row_context,
-
-    // Malformed address
-        structure_after_value, 
-        top_category_after_category,
-
-    // Missing structure
-        top_category_not_found,
-        sub_category_not_found,
-        key_not_found,
-        table_not_found,
-        row_not_owned,
-        column_not_found,
-
-    // Type error
-        not_an_array,
-        index_out_of_bounds,
-        __LAST
-    };
-
-    constexpr std::array<std::string_view, static_cast<size_t>(resolve_error_kind::__LAST)> 
-    resolve_error_string =
-    {
-        "no_category_context",
-        "no_table_context",
-        "no_row_context",
-        "structure_after_value," 
-        "top_category_after_category",
-        "top_category_not_found",
-        "sub_category_not_found",
-        "key_not_found",
-        "table_not_found",
-        "row_not_owned",
-        "column_not_found",
-        "not_an_array",
-        "index_out_of_bounds"
-    };
-
-
-    struct resolve_error
-    {
-        size_t             step_index;
-        resolve_error_kind kind;
-    };
-
-    // ------------------------------------------------------------
-    // resolve context
-    // ------------------------------------------------------------
-
-    struct resolve_context
+    struct inspect_context
     {
         const document* doc = nullptr;
 
-        std::optional<document::category_view>  category;
-        std::optional<document::table_view>     table;
-        std::optional<document::table_row_view> row;
-        std::optional<document::column_view>    column;
-        const typed_value*                      value = nullptr;
+        std::optional<document::category_view> category;
+        std::optional<document::table_view>    table;
+        std::optional<document::table_row_view>      row;
+        std::optional<document::column_view>   column;
+        const typed_value*                     value = nullptr;
+    };    
 
-        std::vector<resolve_error> errors;
-
-        bool has_errors() const
-        {
-            return !errors.empty();
-        }
-    };
-
-    // ------------------------------------------------------------
-    // helpers
-    // ------------------------------------------------------------
+// ------------------------------------------------------------
+// helpers
+// ------------------------------------------------------------
 
     inline std::optional<table_id>
     resolve_table_ordinal(const document::category_view& cat, size_t ordinal)
@@ -289,262 +353,269 @@ namespace arf::reflect
             || v == value_type::float_array;
     }
 
-    // ------------------------------------------------------------
-    // resolve
-    // ------------------------------------------------------------
+// ------------------------------------------------------------
+// inspect
+// ------------------------------------------------------------
 
-    inline std::optional<const typed_value*>
-    resolve(resolve_context& ctx, const address& addr)
+    inline inspected inspect(
+        inspect_context& ctx,
+        const address& addr
+    )
     {
-        ctx.errors.clear();
-        ctx.value = nullptr;
+        inspected out;
+        out.steps.reserve(addr.steps.size());
+
+        // reset context
+        ctx.category = ctx.doc->root();
         ctx.table.reset();
         ctx.row.reset();
         ctx.column.reset();
-
-        ctx.doc = ctx.doc ? ctx.doc : nullptr;
-
-        if (!ctx.doc)
-            return std::nullopt;
-
-        ctx.category = ctx.doc->root();
-
-        if (addr.steps.empty())
-            return std::nullopt;
+        ctx.value = nullptr;
 
         for (size_t i = 0; i < addr.steps.size(); ++i)
         {
             const auto& step = addr.steps[i];
+            step_diagnostic diag{};
+            diag.state = step_state::ok;
+
+            auto error = [&diag](step_error what)
+            {
+                diag.state = step_state::error;
+                diag.error = what;
+            };
 
             // ---------------- key
             if (auto s = std::get_if<key_step>(&step))
             {
                 if (!ctx.category)
-                {
-                    ctx.errors.push_back({ i, resolve_error_kind::no_category_context });
-                    return std::nullopt;
-                }
-
-                std::optional<document::key_view> k;
-
-                if (std::holds_alternative<key_id>(s->id))
-                    k = ctx.doc->key(std::get<key_id>(s->id));
+                    error(step_error::no_category_context);
                 else
-                    k = ctx.category->key(std::get<std::string_view>(s->id));
-
-                if (!k)
                 {
-                    ctx.errors.push_back({ i, resolve_error_kind::key_not_found });
-                    return std::nullopt;
-                }
+                    auto k =
+                        std::holds_alternative<key_id>(s->id)
+                            ? ctx.doc->key(std::get<key_id>(s->id))
+                            : ctx.category->key(std::get<std::string_view>(s->id));
 
-                ctx.value = &k->value();
-                // do NOT touch category / table / row / column yet
+                    if (!k)
+                        error(step_error::key_not_found);
+                    else
+                        ctx.value = &k->value();
+                }
             }
 
             // ---------------- top category
             else if (auto s = std::get_if<top_category_step>(&step))
             {
-                // Note: category navigation is legal after key
+                if (ctx.value)
+                    error(step_error::structure_after_value);
 
-                // top() is only legal before any category navigation
-                if (ctx.category && ctx.category->id() != ctx.doc->root()->id())
+                else if (ctx.category && ctx.category->id() != ctx.doc->root()->id())
+                    error(step_error::top_category_after_category);
+
+                else
                 {
-                    ctx.errors.push_back({ i, resolve_error_kind::top_category_after_category });
-                    return std::nullopt;
+                    auto next = ctx.doc->root()->child(s->name);
+                    if (!next)
+                        error(step_error::top_category_not_found);
+                    else
+                    {
+                        ctx.category = next;
+                        ctx.table.reset();
+                        ctx.row.reset();
+                        ctx.column.reset();
+                        ctx.value = nullptr;
+                    }
                 }
-
-                auto next = ctx.doc->root()->child(s->name);
-                if (!next)
-                {
-                    ctx.errors.push_back({ i, resolve_error_kind::top_category_not_found });
-                    return std::nullopt;
-                }
-
-                ctx.category = next;
-                ctx.table.reset();
-                ctx.row.reset();
-                ctx.column.reset();
-                ctx.value = nullptr;
             }
 
             // ---------------- sub category
             else if (auto s = std::get_if<sub_category_step>(&step))
             {
-                // Note: category navigation is legal after key
+                if (ctx.value)
+                    error(step_error::structure_after_value);
 
-                if (!ctx.category || ctx.category->id() == ctx.doc->root()->id())
+                else if (!ctx.category)
+                    error(step_error::no_category_context);
+
+                else if (ctx.category->id() == ctx.doc->root()->id())
+                    error(step_error::sub_category_under_root);
+
+                else
                 {
-                    ctx.errors.push_back({ i, resolve_error_kind::no_category_context });
-                    return std::nullopt;
+                    auto next = ctx.category->child(s->name);
+                    if (!next)
+                        error(step_error::sub_category_not_found);
+                    else
+                    {
+                        ctx.category = next;
+                        ctx.table.reset();
+                        ctx.row.reset();
+                        ctx.column.reset();
+                        ctx.value = nullptr;
+                    }
                 }
-
-                auto next = ctx.category->child(s->name);
-                if (!next)
-                {
-                    ctx.errors.push_back({ i, resolve_error_kind::sub_category_not_found });
-                    return std::nullopt;
-                }
-
-                ctx.category = next;
-                ctx.table.reset();
-                ctx.row.reset();
-                ctx.column.reset();
-                ctx.value = nullptr;
             }
 
             // ---------------- table
             else if (auto s = std::get_if<table_step>(&step))
             {
                 if (ctx.value)
-                {
-                    ctx.errors.push_back({ i, resolve_error_kind::structure_after_value });
-                    return std::nullopt;
-                }
+                    error(step_error::structure_after_value);
 
-                if (!ctx.category)
-                {
-                    ctx.errors.push_back({ i, resolve_error_kind::no_category_context });
-                    return std::nullopt;
-                }
+                else if (!ctx.category)
+                    error(step_error::no_category_context);
 
-                std::optional<table_id> tid;
-
-                if (std::holds_alternative<table_id>(s->id))
-                    tid = std::get<table_id>(s->id);
                 else
-                    tid = resolve_table_ordinal(*ctx.category, std::get<size_t>(s->id));
-
-                if (!tid)
                 {
-                    ctx.errors.push_back({ i, resolve_error_kind::table_not_found });
-                    return std::nullopt;
-                }
+                    std::optional<table_id> tid =
+                        std::holds_alternative<table_id>(s->id)
+                            ? std::optional{ std::get<table_id>(s->id) }
+                            : resolve_table_ordinal(*ctx.category, std::get<size_t>(s->id));
 
-                ctx.table = ctx.doc->table(*tid);
-                if (!ctx.table)
-                {
-                    ctx.errors.push_back({ i, resolve_error_kind::table_not_found });
-                    return std::nullopt;
-                }
+                    if (!tid)
+                        error(step_error::table_not_found);
 
-                ctx.row.reset();
-                ctx.column.reset();
-                ctx.value = nullptr;
+                    else
+                    {
+                        auto tbl = ctx.doc->table(*tid);
+                        if (!tbl)
+                            error(step_error::table_not_found);
+                        else
+                        {
+                            ctx.table = tbl;
+                            ctx.row.reset();
+                            ctx.column.reset();
+                            ctx.value = nullptr;
+                        }
+                    }
+                }
             }
 
             // ---------------- row
             else if (auto s = std::get_if<row_step>(&step))
             {
                 if (ctx.value)
-                {
-                    ctx.errors.push_back({ i, resolve_error_kind::structure_after_value });
-                    return std::nullopt;
-                }
+                    error(step_error::structure_after_value);
 
-                if (!ctx.table)
-                {
-                    ctx.errors.push_back({ i, resolve_error_kind::no_table_context });
-                    return std::nullopt;
-                }
+                else if (!ctx.table)
+                    error(step_error::no_table_context);
 
-                ctx.row = ctx.doc->row(s->id);
-                if (!ctx.row)
+                else
                 {
-                    ctx.errors.push_back({ i, resolve_error_kind::no_row_context });
-                    return std::nullopt;
-                }
-
-                bool owned = false;
-                for (auto rid : ctx.table->rows())
-                {
-                    if (rid == s->id)
+                    auto r = ctx.doc->row(s->id);
+                    if (!r)
+                        error(step_error::no_row_context);
+                    else
                     {
-                        owned = true;
-                        break;
+                        bool owned = false;
+                        for (auto rid : ctx.table->rows())
+                        {
+                            if (rid == s->id)
+                            {
+                                owned = true;
+                                break;
+                            }
+                        }
+
+                        if (!owned)
+                            error( step_error::row_not_owned);
+
+                        else
+                        {
+                            ctx.row = r;
+                            ctx.column.reset();
+                            ctx.value = nullptr;
+                        }
                     }
                 }
-
-                if (!owned)
-                {
-                    ctx.errors.push_back({ i, resolve_error_kind::row_not_owned });
-                    return std::nullopt;
-                }
-
-                ctx.column.reset();
-                ctx.value = nullptr;
             }
 
             // ---------------- column
             else if (auto s = std::get_if<column_step>(&step))
             {
                 if (ctx.value)
-                {
-                    ctx.errors.push_back({ i, resolve_error_kind::structure_after_value });
-                    return std::nullopt;
-                }
+                    error(step_error::structure_after_value);
 
-                if (!ctx.table || !ctx.row)
-                {
-                    ctx.errors.push_back({ i, resolve_error_kind::no_row_context });
-                    return std::nullopt;
-                }
+                else if (!ctx.table)
+                    error(step_error::no_table_context);
 
-                std::optional<document::column_view> col;
+                else if (!ctx.row)
+                    error(step_error::no_row_context);
 
-                if (std::holds_alternative<column_id>(s->id))
-                    col = ctx.doc->column(std::get<column_id>(s->id));
                 else
-                    col = ctx.table->column(std::get<std::string_view>(s->id));
-
-                if (!col)
                 {
-                    ctx.errors.push_back({ i, resolve_error_kind::column_not_found });
-                    return std::nullopt;
-                }
+                    auto col =
+                        std::holds_alternative<column_id>(s->id)
+                            ? ctx.doc->column(std::get<column_id>(s->id))
+                            : ctx.table->column(std::get<std::string_view>(s->id));
 
-                ctx.column = col;
-                auto idx = col->index();
-                ctx.value = &ctx.row->cells()[idx];
+                    if (!col)
+                        error(step_error::column_not_found);
+                    else
+                    {
+                        ctx.column = col;
+                        ctx.value = &ctx.row->cells()[col->index()];
+                    }
+                }
             }
 
             // ---------------- index
             else if (auto s = std::get_if<index_step>(&step))
             {
                 if (!ctx.value)
+                    error(step_error::no_context_value);
+
+                else if (!is_array(ctx.value->type))
+                    error(step_error::not_an_array);
+
+                else
                 {
-                    ctx.errors.push_back({ i, resolve_error_kind::not_an_array });
-                    return std::nullopt;
+                    auto& arr = std::get<std::vector<typed_value>>(ctx.value->val);
+                    if (s->index >= arr.size())
+                        error(step_error::index_out_of_bounds);
+                    else
+                        ctx.value = &arr[s->index];
                 }
-
-                if (!is_array(ctx.value->type))
-                {
-                    ctx.errors.push_back({ i, resolve_error_kind::not_an_array });
-                    return std::nullopt;
-                }
-
-                auto& arr = std::get<std::vector<typed_value>>(ctx.value->val);
-
-                if (s->index >= arr.size())
-                {
-                    ctx.errors.push_back({ i, resolve_error_kind::index_out_of_bounds });
-                    return std::nullopt;
-                }
-
-                ctx.value = &arr[s->index];
             }
+
+            out.steps.push_back(diag);
+
+            if (diag.state == step_state::error)
+                break;
         }
 
-        return ctx.value;
+        // final inspected item (unchanged semantics)
+        if (ctx.value)        out.item = ctx.value;
+        else if (ctx.column)  out.item = *ctx.column;
+        else if (ctx.row)     out.item = *ctx.row;
+        else if (ctx.table)   out.item = *ctx.table;
+        else if (ctx.category)out.item = *ctx.category;
+        else                  out.item = std::monostate{};
+
+        out.value = ctx.value;
+        return out;
+    }
+
+
+    // ------------------------------------------------------------
+    // resolve
+    // ------------------------------------------------------------
+    const typed_value* resolve(
+        inspect_context& ctx,
+        const address& addr
+    )
+    {
+        auto res = inspect(ctx, addr);
+        return res.value;
     }
 
     inline std::optional<const typed_value*>
-    resolve_ex(resolve_context& ctx, const address& addr)
+    resolve_ex(inspect_context& ctx, const address& addr)
     {
-        auto result = resolve(ctx, addr);
-        return ctx.has_errors() ? std::nullopt : result;
+        auto result = inspect(ctx, addr);        
+        if (result.ok()) return result.value;
+        return std::nullopt;
     }
-
 } // namespace arf::reflect
 
 #endif // ARF_REFLECT_HPP
