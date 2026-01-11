@@ -220,9 +220,9 @@ namespace arf::reflect
             {}            
         };
 
-    // ------------------------------------------------------------
-    // address builder
-    // ------------------------------------------------------------
+// ------------------------------------------------------------
+// address builder
+// ------------------------------------------------------------
 
     struct address
     {
@@ -357,7 +357,25 @@ namespace arf::reflect
             document::key_view,
             const typed_value*
         >;
-      
+    
+    struct structural_child
+    {
+        enum class kind
+        {
+            top_category,
+            sub_category,
+            key,
+            table,
+            row,
+            column,
+            index
+        };
+
+        kind kind;
+        std::string_view name;   // empty for anonymous (row, index)
+        size_t           ordinal = 0;
+    };
+
     struct inspected
     {
         const address*     addr {nullptr};
@@ -376,7 +394,21 @@ namespace arf::reflect
                 if (addr->steps[i].diagnostic.state == step_state::error)
                     return i;
             return addr->steps.size();
-        }        
+        }
+        
+        // Structural queries operate on item, not value
+        //
+        // They:
+        // - never fail
+        // - never mutate
+        // - never resolve
+        //
+        // If inspection failed mid-address children are derived 
+        // from the last valid item.
+        //
+        // If item is std::monostate result is empty
+        std::vector<structural_child>
+        structural_children(const inspect_context& ctx) const;
     };    
 
 // ------------------------------------------------------------
@@ -627,8 +659,7 @@ namespace arf::reflect
             }                
         }
 
-        //if (out.steps_inspected > 0)
-            out.item = last_valid_item;
+        out.item = last_valid_item;
 
         if (out.ok())
         {
@@ -645,10 +676,127 @@ namespace arf::reflect
         return out;
     }
 
+// ------------------------------------------------------------
+// structural query
+// ------------------------------------------------------------
 
-    // ------------------------------------------------------------
-    // resolve
-    // ------------------------------------------------------------
+    inline std::vector<structural_child>
+    inspected::structural_children(const inspect_context& ctx) const
+    {
+        std::vector<structural_child> out;
+
+        if (!ctx.doc)
+            return out;
+
+        struct structural_query_result {};
+
+        auto query_category = [&](auto&& node) -> structural_query_result
+        {
+            // subcategories
+            for (auto sc : node.children())
+                if (auto cat = ctx.doc->category(sc); cat.has_value())
+                {
+                    out.push_back({
+                        structural_child::kind::sub_category,
+                        cat->name(),
+                        0
+                    });
+                }
+
+            // keys
+            for (auto k : node.keys())
+                if (auto key = ctx.doc->key(k); key.has_value())
+                {
+                    out.push_back({
+                        structural_child::kind::key,
+                        key->name(),
+                        0
+                    });
+                }
+
+            // tables (ordinal only)
+            size_t i = 0;
+            for (auto tid : node.tables())
+            {
+                (void)tid;
+                out.push_back({
+                    structural_child::kind::table,
+                    {},
+                    i++
+                });
+            }
+
+            return structural_query_result{};
+        };
+
+        auto query_table = [&](auto&& node) -> structural_query_result
+        {
+            for (auto rid : node.rows())
+            {
+                out.push_back({
+                    structural_child::kind::row,
+                    {},
+                    static_cast<size_t>(rid)
+                });
+            }
+            return structural_query_result{};
+        };
+
+        auto query_table_row = [&](auto&& node) -> structural_query_result
+        {
+            for (auto c : node.table().columns())
+                if (auto col = ctx.doc->column(c); col.has_value())
+                {
+                    out.push_back({
+                        structural_child::kind::column,
+                        col->name(),
+                        col->index()
+                    });
+                }
+            return structural_query_result{};
+        };
+
+        auto query_value = [&](auto&& node) -> structural_query_result
+        {
+            if (node && is_array(node->type))
+            {
+                auto& arr = std::get<std::vector<typed_value>>(node->val);
+                for (size_t i = 0; i < arr.size(); ++i)
+                {
+                    out.push_back({
+                        structural_child::kind::index,
+                        {},
+                        i
+                    });
+                }
+            }
+            return structural_query_result{};
+        };
+
+        std::visit([&](auto&& node)
+        {
+            using T = std::decay_t<decltype(node)>;
+
+            if constexpr (std::is_same_v<T, document::category_view>)
+                query_category(node);
+
+            else if constexpr (std::is_same_v<T, document::table_view>)
+                query_table(node);
+
+            else if constexpr (std::is_same_v<T, document::table_row_view>)
+                query_table_row(node);
+
+            else if constexpr (std::is_same_v<T, const typed_value*>)
+                query_value(node);
+        }, item);
+
+        return out;
+    }    
+
+// ------------------------------------------------------------
+// resolve
+// ------------------------------------------------------------
+
     const typed_value* resolve(
         inspect_context& ctx,
         address& addr
@@ -657,6 +805,7 @@ namespace arf::reflect
         auto res = inspect(ctx, addr);
         return res.value;
     }
+    
 } // namespace arf::reflect
 
 #endif // ARF_REFLECT_HPP
