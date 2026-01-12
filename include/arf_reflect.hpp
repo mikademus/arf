@@ -209,6 +209,13 @@ namespace arf::reflect
             index_step
         >;
 
+// ------------------------------------------------------------
+// addressed_step
+// ------------------------------------------------------------
+// Diagnostic is written by inspect().
+// Not thread-safe if the address is shared.
+// ------------------------------------------------------------
+
         struct addressed_step
         {
             address_step     step;
@@ -221,7 +228,10 @@ namespace arf::reflect
         };
 
 // ------------------------------------------------------------
-// address builder
+// address and address builder
+// ------------------------------------------------------------
+// Address represents a logical path.
+// Diagnostics are written during inspection.
 // ------------------------------------------------------------
 
     struct address
@@ -301,6 +311,8 @@ namespace arf::reflect
             return !b;
         }
     };
+
+    static_assert(std::is_copy_constructible_v<address>, "address must be copyable for const inspect() to work");
 
     inline address root()
     {
@@ -470,7 +482,14 @@ namespace arf::reflect
     };    
 
 // ------------------------------------------------------------
-// inspect
+// inspect - mutable version
+// ------------------------------------------------------------
+// Mutable version: Writes diagnostics to addr.
+// Not thread-safe if addr is shared across threads.
+// Most efficient for single-threaded reuse.
+// ------------------------------------------------------------
+// Note: Addresses can be reused across multiple inspections.
+// Each inspection resets and rewrites diagnostic state.
 // ------------------------------------------------------------
 
     inline inspected inspect(
@@ -732,6 +751,19 @@ namespace arf::reflect
         }   
 
         return out;
+    }
+
+// ------------------------------------------------------------
+// inspect - immutable version
+// ------------------------------------------------------------
+// Const version: Copies addr internally, returns diagnostics in result.
+// Thread-safe for shared addresses.
+// Slightly less efficient (one copy + allocation).
+// ------------------------------------------------------------
+    inspected inspect(inspect_context& ctx, const address& addr)
+    {
+        address temp = addr;
+        return inspect(ctx, temp);
     }
 
 // ------------------------------------------------------------
