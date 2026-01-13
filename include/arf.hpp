@@ -3,6 +3,34 @@
 // Copyright 2025 Mikael Ueno A
 // Licenced as-is under the MIT licence.
 
+//========================================================================
+// Arf! Core Principles:
+//========================================================================
+//
+// The Authored-Intent Principle
+// ----------------------------
+// The authored form of a document is meaningful.
+// Order, locality, and grouping reflect intent.
+// Arf! preserves this intent even in the presence of errors or ambiguity.
+//
+//
+// The Value-Centric Principle
+// ---------------------------
+// Arf! treats values as the only fundamental entities.
+// Reflection locates values via addresses.
+// Query selects values via filters.
+// Structure exists to serve access, not to define data.
+//
+//
+// The Recoverability Principle
+// ---------------------------
+// Invalid constructs are preserved, not erased.
+// Errors are local and non-fatal.
+// A broken document is still a document.
+//
+//========================================================================
+
+
 #ifndef ARF_A_READABLE_FORMAT
 #define ARF_A_READABLE_FORMAT
 

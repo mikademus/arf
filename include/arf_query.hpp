@@ -1,722 +1,386 @@
 // arf_query.hpp - A Readable Format (Arf!) - Query Interface
-// Version 0.2.0
+// Version 0.3.0
+//
 // Copyright 2025 Mikael Ueno A
 // Licenced as-is under the MIT licence.
+//
+// -----------------------------------------------------------------------------
+// Query interface principles
+// -----------------------------------------------------------------------------
+//
+// The Arf! query API is a human-facing, read-oriented interface for retrieving
+// values from a document. It is intentionally distinct from reflection.
+//
+// Core principles:
+//
+// 1. Queries observe, never mutate.
+//    Querying does not alter document structure or values.
+//
+// 2. Queries are selections, not navigation.
+//    Path expressions and fluent operations progressively narrow a result set.
+//    They do not encode absolute addresses or structural identity.
+//
+// 3. Paths primarily express structure and value-based selection is explicit.
+//    Identifier-like value selection is permitted in constrained collection contexts.
+//
+// 4. Document order is preserved unless explicitly refined.
+//    The relative authored order is preserved even in query results.
+//
+// 5. Plurality is the default.
+//    Queries may yield zero, one, or many results.
+//
+// 6. Ambiguity is reported, not fatal.
+//    Ambiguous queries return all matching results and diagnostics.
+//
+// 7. Values may act as identifiers at query time,
+//    but never become structural names.
+//
+// 8. Evaluation is implicit.
+//    A query is executed when results are accessed.
+//    There is no explicit "eval" or execution step.
+//
+// The query API is optimised for human ergonomics and clarity.
+// Tooling, mutation, and structural introspection belong to reflection.
+//
+// -----------------------------------------------------------------------------
+// Document order is always preserved
+// -----------------------------------------------------------------------------
+//
+// All query results preserve the authored order from the source document.
+// This is an invariant across all operations.
+//
+//     auto results = query(doc, "races").strings();
+//       --> results[0] is the first "races" element in the document
+//       --> results[1] is the second "races" element in the document
+//
+// This guarantee holds for:
+//   - Multi-result queries
+//   - Predicate filtering (where clauses)
+//   - Structural selection (select clauses)
+//   - Ambiguous matches
+//
+// Order is NEVER altered by:
+//   - Query evaluation strategy
+//   - Internal optimization
+//   - Result caching
+//
+// The author's intent is preserved.
+//
+// -----------------------------------------------------------------------------
+// Query syntax and usage model
+// -----------------------------------------------------------------------------
+//
+// A query is a progressive selection pipeline over a document.
+// Each link in the chain narrows or refines a working result set.
+//
+// -----------------------------------------------------------------------------
+// 1. Dot-paths (structural and contextual selection)
+// -----------------------------------------------------------------------------
+//
+// Dot-paths describe structural descent and contextual selection.
+// Any dot-path accepted by query() is also valid in select().
+//
+//     query(doc, "world.races");
+//     query(doc).select("world.races");
+//     query(doc, "world").select("races");
+//
+// These forms are equivalent.
+//
+// -----------------------------------------------------------------------------
+// 1.1. Dot-path semantics: Progressive filtering, not navigation
+// -----------------------------------------------------------------------------
+//
+// A dot-path is NOT a navigation through nodes or addresses.
+// It is a PROGRESSIVE FILTER that narrows a working result set.
+//
+// Each segment applies a selection predicate:
+//
+//     "world.races.orcs"
+//
+// Conceptual execution:
+//
+//     1. Start with entire document as working set
+//     2. Filter to elements matching "world" → working set = {world entities}
+//     3. Filter to elements matching "races" → working set = {race entities}
+//     4. Filter to elements matching "orcs"  → working set = {orc entities}
+//
+// This is analogous to:
+//   - SQL: Successive WHERE clauses on derived tables
+//   - Functional: Composition of filter/map operations
+//   - Optics: Progressive lens focusing
+//
+// It is NOT analogous to:
+//   - Filesystem paths: /world/races/orcs
+//   - Object navigation: doc.world.races.orcs
+//   - Address traversal: root().top("world").sub("races")
+//
+// The distinction matters:
+//   - Navigation implies unique paths and structural identity
+//   - Filtering implies set operations and plurality
+//
+// Query embraces plurality and set-based selection.
+// Reflection provides precise structural addressing.
+//
+// -----------------------------------------------------------------------------
+// 2. Flowing selection chains
+// -----------------------------------------------------------------------------
+//
+// Queries are built as a flowing chain of selection links:
+//
+//     query(doc, "world.races")
+//         .where("race", "orcs")
+//         .select("poise");
+//
+// Each link refines the current result set.
+// There is no implicit backtracking or guessing.
+//
+// -----------------------------------------------------------------------------
+// 3. Mixed selection styles
+// -----------------------------------------------------------------------------
+//
+// Structural selection (dot-paths) and predicate selection can be mixed:
+//
+//     query(doc)
+//         .select("world")
+//         .select("races")
+//         .where("race", "orcs")
+//         .select("population");
+//
+// Dot-paths may appear both at query construction and mid-chain.
+//
+// -----------------------------------------------------------------------------
+// 4. Value-based selection in dot-paths
+// -----------------------------------------------------------------------------
+//
+// In collection contexts (such as tables), dot-paths may include
+// value-based selectors as a shorthand for identifier lookup.
+//
+//     world.races.orcs
+//     world.races.orcs.poise
+//
+// Here, "orcs" acts as a query-time identifier selecting rows whose
+// leading identifier column matches "orcs".
+//
+// This does not promote values to structural names.
+// It is equivalent to an equality predicate, a constrained, contextual
+// shorthand for equality selection.
+//
+// Consider the common use case of tables with leading columns in string format
+// (as in the fantasy races query, above). It is desirable and useful to be able 
+// to select directly on the leading column as an identifier. 
+//
+// -----------------------------------------------------------------------------
+// 5. Multiple access paths to the same data
+// -----------------------------------------------------------------------------
+//
+// The same value can often be reached in more than one way:
+//
+//     query(doc, "world.races.orcs.poise");
+//
+//     query(doc, "world.races")
+//         .where("race", "orcs")
+//         .select("poise");
+//
+//     get_string(doc, "world.races.orcs.poise");
+//
+// All are valid and equivalent in intent.
+// The API optimises for human convenience and readability.
+//
+// -----------------------------------------------------------------------------
+// 6. Plurality is always possible
+// -----------------------------------------------------------------------------
+//
+// Queries may yield zero, one, or many results.
+// Plurality is the default and never an error.
+//
+//     auto res = query(doc, "world.races.orcs");
+//
+// Document order is preserved unless explicitly refined.
+//
+// -----------------------------------------------------------------------------
+// 7. Predicate model
+// -----------------------------------------------------------------------------
+//
+// Predicates are explicit value constraints.
+//
+//     where("population", gt("1000"))
+//     where("name", ne("orc"))
+//
+// Equality has a shorthand:
+//
+//     where("race", "orcs")
+//
+// Predicates refine the current result set and are fully chainable.
+//
+// -----------------------------------------------------------------------------
+// 8. Implicit execution
+// -----------------------------------------------------------------------------
+//
+// Queries execute implicitly when results are accessed.
+// There is no explicit evaluation step.
+//
+//     auto res = query(doc, "world.foo");
+//     auto v   = res.as_integer();
+//
+// Querying observes the document; it never mutates it.
+//
+// -----------------------------------------------------------------------------
 
 #ifndef ARF_QUERY_HPP
 #define ARF_QUERY_HPP
 
-#include "arf_reflect.hpp"
-#include <iterator>
+#pragma once
 
-namespace arf 
-{    
-//========================================================================
-// Forward declarations
-//========================================================================
+#include <string_view>
+#include <vector>
+#include <optional>
+#include <cstddef>
+#include <cstdint>
 
-    class table_view;
-    class row_view;
+namespace arf
+{
+    struct document;
 
-//========================================================================
-// QUERY API
-//========================================================================
-    
-    // Basic value query (returns proxy for reflection)
-    std::optional<value_ref> get(const document& doc, const std::string& path);
-    
-    // Direct value access
-    std::optional<std::string> get_string(const document& doc, const std::string& path);
-    std::optional<int64_t> get_int(const document& doc, const std::string& path);
-    std::optional<double> get_float(const document& doc, const std::string& path);
-    std::optional<bool> get_bool(const document& doc, const std::string& path);
+// ---------------------------------------------------------------------
+// Query diagnostics
+// ---------------------------------------------------------------------
 
-    // Array access helpers
-    std::optional<std::span<const std::string>> get_string_array(const document& doc, const std::string& path);        
-    std::optional<std::span<const int64_t>> get_int_array(const document& doc, const std::string& path);        
-    std::optional<std::span<const double>> get_float_array(const document& doc, const std::string& path);
-    
-    // Table access
-    std::optional<table_view> get_table(const document& doc, const std::string& path);
-    
-    // Path utilities
-    std::string category_path(const category* cat, const document& doc);
-    std::string to_path(const row_view& row, const document& doc);
-    
-//========================================================================
-// TABLE ROW VIEW
-//========================================================================
-
-    class row_view 
+    enum class query_issue_kind
     {
-    public:
-        row_view(const table_row* row, const table_view* table, const category* source)
-            : row_(row), table_(table), source_category_(source) {}
-        
-        // Index-based access
-        value_ref operator[](size_t index) const { return value_ref(row_->cells[index]); }
-        
-        // Name-based value access
-        const typed_value* get_typed_ptr(const std::string& name) const;
-
-        //const value* get_ptr(const std::string& column_name) const;
-
-        std::optional<value_ref> get(const std::string& name) const;
-        
-        // Convenience typed getters
-        std::optional<std::string>  get_string(const std::string& col) const;
-        std::optional<int64_t>      get_int(const std::string& col) const;
-        std::optional<double>       get_float(const std::string& col) const;
-        std::optional<bool>         get_bool(const std::string& col) const;
-        
-        // Array getters
-        std::optional<std::span<const std::string>> get_string_array(const std::string& col) const;
-        std::optional<std::span<const int64_t>>     get_int_array(const std::string& col) const;
-        std::optional<std::span<const double>>      get_float_array(const std::string& col) const;
-        
-        // Provenance information
-        const category* source()      const { return source_category_; }
-        std::string     source_name() const { return source_category_->name; }
-
-        bool is_base_row() const;
-        
-        // Raw access
-        const table_row& raw() const { return *row_; }
-        
-    private:
-    
-        template<typename T>
-        const T* get_ptr(const std::string& column_name) const;
-
-        const table_row* row_;
-        const table_view* table_;
-        const category* source_category_;
+        none,
+        not_found,
+        ambiguous,
+        type_mismatch,
+        invalid_predicate,
+        structural_violation
     };
-    
-//========================================================================
-// TABLE VIEW
-//========================================================================
-    
-    class table_view 
+
+    struct query_issue
     {
-    public:
-        // Iterator for document-order row traversal
-        class document_iterator
-        {
-        public:
-            using iterator_category = std::forward_iterator_tag;
-            using value_type = row_view;
-
-            document_iterator(const table_view* table, bool at_end = false);
-
-            row_view operator*() const;
-            document_iterator& operator++();
-            bool operator==(const document_iterator& other) const;
-
-        private:
-            void advance();
-
-            const table_view* table_;
-            bool at_end_;
-
-            struct frame
-            {
-                const category* cat;
-                size_t decl_index;   // Position in source_order
-                const decl_ref* current_row = nullptr;
-            };
-
-            std::vector<frame> stack_;
-        };
-
-        // Range wrapper for rows_document()
-        class document_range
-        {
-        public:
-            document_range(const table_view* table) : table_(table) {}
-            document_iterator begin() const { return table_->rows_document_begin(); }
-            document_iterator end() const { return table_->rows_document_end(); }
-        private:
-            const table_view* table_;
-        };
-
-        // Iterator for recursive row traversal
-        class recursive_iterator
-        {
-        public:
-            using iterator_category = std::forward_iterator_tag;
-            using value_type = row_view;
-
-            recursive_iterator(const table_view* table, bool at_end = false);
-
-            row_view operator*() const;
-            recursive_iterator& operator++();
-            bool operator==(const recursive_iterator& other) const;
-
-        private:
-            void advance();
-
-            const table_view* table_;
-            bool at_end_;
-
-            struct frame
-            {
-                const category* cat;
-                size_t row_index;
-                std::map<std::string, std::unique_ptr<category>>::const_iterator child_it;
-            };
-
-            std::vector<frame> stack_;
-        };
-        
-        // Range wrapper for rows_recursive()
-        class recursive_range 
-        {
-        public:
-            recursive_range(const table_view* table) : table_(table) {}
-            recursive_iterator begin() const { return table_->rows_recursive_begin(); }
-            recursive_iterator end() const { return table_->rows_recursive_end(); }
-        private:
-            const table_view* table_;
-        };
-        
-        explicit table_view(const category* cat) : cat_(cat) {}
-        
-        // Column information
-        const std::vector<column>& columns() const { return cat_->table_columns; }
-        std::optional<size_t> column_index(const std::string& name) const;
-        
-        // Row access (current category only)
-        const std::vector<table_row>& rows() const { return cat_->table_rows; }
-        row_view row(size_t index) const;
-        
-        // Recursive row iteration (includes subcategories, depth-first)
-        recursive_iterator rows_recursive_begin() const { return recursive_iterator(this, false); }
-        recursive_iterator rows_recursive_end() const { return recursive_iterator(this, true); }
-        recursive_range rows_recursive() const { return recursive_range(this); }
-        
-        // Document-order row iteration (preserves author's ordering)
-        document_iterator rows_document_begin() const { return document_iterator(this, false); }
-        document_iterator rows_document_end() const { return document_iterator(this, true); }
-        document_range rows_document() const { return document_range(this); }
-
-        // Subcategory access
-        const std::map<std::string, std::unique_ptr<category>>& subcategories() const 
-        { 
-            return cat_->subcategories; 
-        }
-        
-        std::optional<table_view> subcategory(const std::string& name) const;
-        
-        // Raw category access
-        const category* raw() const { return cat_; }
-        
-    private:
-        const category* cat_;
-        
-        friend class recursive_iterator;
-        friend class row_view;
+        query_issue_kind kind;
+        std::string_view message;
     };
-    
-    
-//========================================================================
-// QUERY IMPLEMENTATION
-//========================================================================
-    
-    namespace detail 
+
+// ---------------------------------------------------------------------
+// Predicate model
+// ---------------------------------------------------------------------
+
+    struct predicate
     {
-        enum class path_resolution
+        enum class kind
         {
-            key_owner,   // stop before last segment
-            category     // consume full path
+            eq,
+            ne,
+            lt,
+            le,
+            gt,
+            ge
         };
 
-        inline std::vector<std::string> split_path(const std::string& path)
-        {
-            std::vector<std::string> parts;
-            std::string current;
-            
-            for (char c : path)
-            {
-                if (c == '.')
-                {
-                    if (!current.empty())
-                    {
-                        parts.push_back(to_lower(current));
-                        current.clear();
-                    }
-                }
-                else
-                {
-                    current += c;
-                }
-            }
-            
-            if (!current.empty())
-                parts.push_back(to_lower(current));
-            
-            return parts;
-        }
-        
+        std::string_view column;
+        kind              op;
 
-        inline const category* resolve_category(
-            const document& doc,
-            const std::vector<std::string>& path,
-            path_resolution target
-        )
-        {
-            if (path.empty()) return nullptr;
+        // Stored as string_view intentionally:
+        // value interpretation is deferred and contextual.
+        std::string_view value;
+    };
 
-            auto it = doc.categories.find(path[0]);
-            if (it == doc.categories.end())
-            {
-                it = doc.categories.find(std::string(ROOT_CATEGORY_NAME));
-                if (it == doc.categories.end())
-                    return nullptr;
-            }
+    // Predicate constructors (value-side helpers, not execution)
+    predicate is (std::string_view value) noexcept;
+    predicate ne (std::string_view value) noexcept;
+    predicate lt (std::string_view value) noexcept;
+    predicate le (std::string_view value) noexcept;
+    predicate gt (std::string_view value) noexcept;
+    predicate ge (std::string_view value) noexcept;
 
-            const category* current = it->second.get();
+// ---------------------------------------------------------------------
+// Query result
+// ---------------------------------------------------------------------
 
-            const size_t limit =
-                (target == path_resolution::key_owner)
-                    ? path.size() - 1
-                    : path.size();
-
-            for (size_t i = 1; i < limit; ++i)
-            {
-                auto sub = current->subcategories.find(path[i]);
-                if (sub == current->subcategories.end())
-                    return nullptr;
-
-                current = sub->second.get();
-            }
-
-            return current;
-        }
-
-        inline const typed_value* find_typed_value_ptr(const document& doc, const std::string& path)
-        {
-            auto parts = split_path(path);
-            if (parts.empty()) return nullptr;
-
-            const category* cat =
-                resolve_category(doc, parts, path_resolution::key_owner);
-            if (!cat) return nullptr;
-
-            auto it = cat->key_values.find(parts.back());
-            if (it == cat->key_values.end())
-                return nullptr;
-
-            return &it->second;
-        }
-    } // namespace detail
-
-//========================================================================
-// TABLE VIEW IMPLEMENTATION
-//========================================================================
-    
-    // Document iterator implementation
-    inline table_view::document_iterator::document_iterator(
-        const table_view* table,
-        bool at_end
-    )
-        : table_(table), at_end_(at_end)
+    class query_result
     {
-        if (!at_end_)
-        {
-            stack_.push_back({ table_->cat_, 0, nullptr });
-            advance();
-        }
-    }
-            
-    inline row_view table_view::document_iterator::operator*() const
+        public:
+            query_result() noexcept;
+
+            bool empty() const noexcept;
+            bool ambiguous() const noexcept;
+
+            const std::vector<query_issue>& issues() const noexcept;
+
+            // Singular extraction
+            std::optional<std::string_view> as_string() const noexcept;
+            std::optional<std::int64_t>      as_integer() const noexcept;
+            std::optional<double>            as_real() const noexcept;
+
+            // Plural extraction
+            std::vector<std::string_view> strings() const;
+            std::vector<std::int64_t>      integers() const;
+            std::vector<double>            reals() const;
+
+        private:
+            // Opaque on purpose: implementation owns storage and identity.
+            struct impl;
+            impl* pimpl;
+    };
+
+// ---------------------------------------------------------------------
+// Query builder
+// ---------------------------------------------------------------------
+
+    class query
     {
-        const auto& f = stack_.back();
+        public:
+            explicit query(const document& doc) noexcept;
+            query(const document& doc, std::string_view path) noexcept;
 
-        return row_view(
-            &f.cat->table_rows[f.current_row->row_index],
-            table_,
-            f.cat
-        );    
-    }
-    
-    inline table_view::document_iterator&
-    table_view::document_iterator::operator++()
+            // Structural narrowing (dot-path semantics)
+            query& select(std::string_view path) noexcept;
+
+            // Ordinal table selection
+            query& table(std::size_t ordinal) noexcept;
+
+            // Predicate refinement
+            query& where(std::string_view column, const predicate& pred) noexcept;
+
+            // Shorthand: equality predicate
+            query& where(std::string_view column, std::string_view value) noexcept;
+
+            // Explicit enumeration (optional; plurality is default)
+            query& all() noexcept;
+
+            // Implicit evaluation on access
+            query_result result() const noexcept;
+
+        private:
+            const document* doc_;
+    };
+
+// ---------------------------------------------------------------------
+// Primary entry point
+// ---------------------------------------------------------------------
+
+    inline query query(const document& doc) noexcept
     {
-        advance();
-        return *this;
-    }
-    
-    inline bool table_view::document_iterator::operator==(
-        const document_iterator& other
-    ) const
-    {
-        if (at_end_ && other.at_end_) return true;
-        if (at_end_ != other.at_end_) return false;
-        
-        const auto& a = stack_.back();
-        const auto& b = other.stack_.back();
-        
-        return a.cat == b.cat && a.decl_index == b.decl_index;
-    }
-    
-    inline void table_view::document_iterator::advance()
-    {
-        while (!stack_.empty())
-        {
-            frame& f = stack_.back();
-
-            while (f.decl_index < f.cat->source_order.size())
-            {
-                const auto& decl = f.cat->source_order[f.decl_index++];
-
-                switch (decl.kind)
-                {
-                    case decl_kind::table_row:
-                        f.current_row = &decl;
-                        return;
-
-                    case decl_kind::subcategory:
-                    {
-                        auto it = f.cat->subcategories.find(decl.name);
-                        if (it != f.cat->subcategories.end())
-                        {
-                            stack_.push_back({ it->second.get(), 0 });
-                            // Continue from top of outer while - will reacquire 'f'
-                            goto next_frame;
-                        }
-                        break;
-                    }
-
-                    case decl_kind::key:
-                        break;
-                }
-            }
-
-            stack_.pop_back();
-            
-            if (stack_.empty())
-            {
-                at_end_ = true;
-                return;
-            }
-
-            stack_.back().current_row = nullptr;
-            
-        next_frame:;  // Label for goto
-        }
+        return query{ doc };
     }
 
-    inline std::optional<size_t> table_view::column_index(const std::string& name) const 
+    inline query query(const document& doc, std::string_view path) noexcept
     {
-        std::string lower = detail::to_lower(name);
-        for (size_t i = 0; i < cat_->table_columns.size(); ++i) 
-        {
-            if (cat_->table_columns[i].name == lower)
-                return i;
-        }
-        return std::nullopt;
-    }
-    
-    inline row_view table_view::row(size_t index) const 
-    {
-        return row_view(&cat_->table_rows[index], this, cat_);
-    }
-    
-    inline std::optional<table_view> table_view::subcategory(const std::string& name) const 
-    {
-        std::string lower = detail::to_lower(name);
-        auto it = cat_->subcategories.find(lower);
-        if (it == cat_->subcategories.end()) return std::nullopt;
-        return table_view(it->second.get());
-    }
-    
-    // Recursive iterator implementation
-    inline table_view::recursive_iterator::recursive_iterator(
-        const table_view* table,
-        bool at_end
-    )
-        : table_(table), at_end_(at_end)
-    {
-        if (at_end_) return;
-
-        stack_.push_back({
-            table_->cat_,
-            0,
-            table_->cat_->subcategories.begin()
-        });
-
-        // Ensure first dereference is valid
-        if (stack_.back().cat->table_rows.empty())
-            advance();
-    }
-    
-    inline row_view table_view::recursive_iterator::operator*() const
-    {
-        const auto& f = stack_.back();
-        return row_view(
-            &f.cat->table_rows[f.row_index],
-            table_,
-            f.cat
-        );
-    }
-    
-    inline table_view::recursive_iterator&
-    table_view::recursive_iterator::operator++()
-    {
-        advance();
-        return *this;
-    }
-    
-    inline bool table_view::recursive_iterator::operator==(
-        const recursive_iterator& other
-    ) const
-    {
-        if (at_end_ && other.at_end_) return true;
-        if (at_end_ != other.at_end_) return false;
-
-        // Both valid iterators: compare *position*, not history
-        const auto& a = stack_.back();
-        const auto& b = other.stack_.back();
-
-        return a.cat == b.cat
-            && a.row_index == b.row_index;
+        return query{ doc, path };
     }
 
-    inline void table_view::recursive_iterator::advance()
-    {
-        while (!stack_.empty())
-        {
-            auto& f = stack_.back();
+// ---------------------------------------------------------------------
+// Ergonomic getters (human API)
+// ---------------------------------------------------------------------
 
-            // 1. Advance within current category rows
-            if (++f.row_index < f.cat->table_rows.size())
-                return;
+    std::optional<std::string_view>
+    get_string(const document& doc, std::string_view path) noexcept;
 
-            // 2. Descend into next subcategory with rows
-            while (f.child_it != f.cat->subcategories.end())
-            {
-                const category* child = f.child_it->second.get();
-                ++f.child_it;
-                stack_.push_back({child, 0, child->subcategories.begin()});
-                return;
-            }
+    std::optional<std::int64_t>
+    get_integer(const document& doc, std::string_view path) noexcept;
 
-            // 3. Exhausted this category → pop and continue upward
-            stack_.pop_back();
-        }
-
-        at_end_ = true;
-    }
-    
-//========================================================================
-// ROW VIEW IMPLEMENTATION
-//========================================================================
-    
-    template<typename T>
-    const T* row_view::get_ptr(const std::string& column_name) const
-    {
-        if (const typed_value* tv = get_typed_ptr(column_name))            
-            return std::get_if<T>(&tv->val);
-        return nullptr;
-    }
-
-    inline std::optional<value_ref> row_view::get(const std::string& name) const
-    {
-        auto idx = table_->column_index(name);
-        if (!idx)
-            return std::nullopt;
-        return value_ref(row_->cells[*idx]);        
-    }
-
-    inline const typed_value* row_view::get_typed_ptr(const std::string& name) const
-    {
-        auto idx = table_->column_index(name);
-        if (!idx)
-            return nullptr;
-        return &row_->cells[*idx];        
-    }
-    
-    inline std::optional<std::string> row_view::get_string(const std::string& col) const 
-    {
-        if (auto p = get_ptr<std::string>(col))
-            return *p;
-        return std::nullopt;
-    }
-    
-    inline std::optional<int64_t> row_view::get_int(const std::string& col) const
-    {
-        if (auto p = get_ptr<int64_t>(col))
-            return *p;
-        return std::nullopt;        
-    }
-
-    inline std::optional<double> row_view::get_float(const std::string& col) const 
-    {
-        if (auto p = get_ptr<double>(col))
-            return *p;
-        return std::nullopt;        
-    }
-
-    inline std::optional<bool> row_view::get_bool(const std::string& col) const 
-    {
-        if (auto p = get_ptr<bool>(col))
-            return *p;
-        return std::nullopt;
-    }
-
-    inline std::optional<std::span<const std::string>>
-    row_view::get_string_array(const std::string& col) const
-    {
-        if (auto* v = get_ptr<std::vector<std::string>>(col))
-            return std::span<const std::string>(*v);
-        return std::nullopt;
-    }
-
-    inline std::optional<std::span<const int64_t>>
-    row_view::get_int_array(const std::string& col) const
-    {
-        if (auto* v = get_ptr<std::vector<int64_t>>(col))
-            return std::span<const int64_t>(*v);
-        return std::nullopt;
-    }
-
-    inline std::optional<std::span<const double>>
-    row_view::get_float_array(const std::string& col) const
-    {
-        if (auto* v = get_ptr<std::vector<double>>(col))
-            return std::span<const double>(*v);
-        return std::nullopt;
-    }    
-        
-    inline bool row_view::is_base_row() const 
-    {
-        return source_category_ == table_->cat_;
-    }
-
-//========================================================================
-// PUBLIC QUERY API IMPLEMENTATION
-//========================================================================
-
-    inline std::optional<value_ref> get(const document& doc, const std::string& path)
-    {
-        if (const typed_value* tv = detail::find_typed_value_ptr(doc, path))
-            return value_ref(*tv);
-        return std::nullopt;
-    }
-
-    inline std::optional<std::string> get_string(const document& doc, const std::string& path)
-    {
-        if (auto ref = get(doc, path))
-        {
-            if (ref->declared() && ref->type() != value_type::string)
-                return std::nullopt;
-
-            if (auto* s = std::get_if<std::string>(&ref->raw()))
-                return *s;
-        }
-        return std::nullopt;
-    }
-
-    inline std::optional<int64_t> get_int(const document& doc, const std::string& path)
-    {
-        if (auto ref = get(doc, path))
-        {
-            if (ref->declared() && ref->type() != value_type::integer)
-                return std::nullopt;
-
-            return ref->as_int();
-        }
-        return std::nullopt;
-    }
-
-    inline std::optional<double> get_float(const document& doc, const std::string& path)
-    {
-        if (auto ref = get(doc, path))
-        {
-            if (ref->declared() && ref->type() != value_type::decimal)
-                return std::nullopt;
-
-            return ref->as_float();
-        }
-        return std::nullopt;
-    }
-
-    inline std::optional<bool> get_bool(const document& doc, const std::string& path)
-    {
-        if (auto ref = get(doc, path))
-        {
-            if (ref->declared() && ref->type() != value_type::boolean)
-                return std::nullopt;
-
-            return ref->as_bool();
-        }
-        return std::nullopt;
-    }
-    
-    inline std::optional<std::span<const std::string>>
-    get_string_array(const document& doc, const std::string& path)
-    {
-        if (auto ref = get(doc, path))
-            return ref->string_array();
-        return std::nullopt;
-    }    
-        
-    inline std::optional<std::span<const int64_t>>
-    get_int_array(const document& doc, const std::string& path)
-    {
-        if (auto ref = get(doc, path))
-            return ref->int_array();
-        return std::nullopt;
-    }    
-        
-    inline std::optional<std::span<const double>>
-    get_float_array(const document& doc, const std::string& path)
-    {
-        if (auto ref = get(doc, path))
-            return ref->float_array();
-        return std::nullopt;
-    }
-
-    inline std::optional<table_view> get_table(const document& doc, const std::string& path)
-    {
-        auto parts = detail::split_path(path);
-        if (parts.empty()) return std::nullopt;
-        
-        const category* cat = detail::resolve_category(doc, parts, detail::path_resolution::category);
-        if (!cat) return std::nullopt;
-        
-        return table_view(cat);
-    }
-    
-    inline std::string category_path(const category* cat, const document& doc)
-    {
-        if (!cat) return "";
-
-        std::vector<std::string> parts;
-        while (cat)
-        {
-            parts.push_back(cat->name);
-            cat = cat->parent;
-        }
-
-        std::reverse(parts.begin(), parts.end());
-
-        std::string path;
-        for (size_t i = 0; i < parts.size(); ++i)
-        {
-            if (i) path += '.';
-            path += parts[i];
-        }
-
-        return path;        
-    }
-    
-    inline std::string to_path(const row_view& row, const document& doc)
-    {
-        return category_path(row.source(), doc);
-    }
-    
-} // namespace arf
+    std::optional<double>
+    get_real(const document& doc, std::string_view path) noexcept;
+}
 
 #endif // ARF_QUERY_HPP
