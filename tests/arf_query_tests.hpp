@@ -45,10 +45,9 @@ namespace arf::tests
         )");
 
         auto ctx =
-            query_of(doc.document, "world")
+            query(doc.document, "world")
                 .where("race", "orcs")
-                .select("poise")
-                .eval();
+                .select("poise").result();
 
         EXPECT(ctx.as_string().value() == "hostile", "");
 
@@ -70,10 +69,10 @@ namespace arf::tests
         )");
 
         auto res =
-            query_of(ctx.document, "world")
+            query(ctx.document, "world")
                 .where("race", "orcs")
                 .select("poise")
-                .eval();
+                .result();
 
         EXPECT(res.strings().size() == 2, "");
 
@@ -92,7 +91,7 @@ namespace arf::tests
                 foo = 2
         )");
 
-        auto res = query_of(ctx.document, "world.foo").eval();
+        auto res = query(ctx.document, "world.foo").result();
 
         EXPECT(res.ambiguous(), "");
         EXPECT(!res.issues().empty(), "");
@@ -116,11 +115,11 @@ namespace arf::tests
         )");
 
         auto res =
-            query_of(ctx.document, "world")
+            query(ctx.document, "world")
                 .table(1)
                 .where("race", "orcs")
                 .select("poise")
-                .eval();
+                .result();
 
         EXPECT(res.as_string().value() == "hostile", "");
 
