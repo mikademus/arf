@@ -1,15 +1,14 @@
 #ifndef ARF_QUERY_HPP
 #define ARF_QUERY_HPP
 
-#pragma once
-
 #include "arf_document.hpp"
 #include "arf_reflect.hpp"
 
-#include <string_view>
-#include <vector>
+#include <charconv>
 #include <optional>
 #include <span>
+#include <string_view>
+#include <vector>
 
 namespace arf
 {
@@ -117,6 +116,7 @@ namespace arf
                 // Keys: extract value manually
                 if (child.kind == st::kind::key)
                 {
+                    // Try to get key_view first
                     if (auto key_view = std::get_if<document::key_view>(&child_insp.item))
                     {
                         out.push_back({
@@ -125,6 +125,19 @@ namespace arf
                             &key_view->value()
                         });
                     }
+                    // For array keys, reflection stores the value directly
+                    else if (auto value_ptr = std::get_if<const typed_value*>(&child_insp.item))
+                    {
+                        out.push_back({
+                            child_addr,
+                            location_kind::terminal_value,
+                            *value_ptr
+                        });
+                    }
+                    else
+                    {
+                        assert(false && "only keys and arrays allowed");
+                    }                  
                 }
                 // Tables
                 else if (child.kind == st::kind::table)
@@ -152,32 +165,123 @@ namespace arf
 
         inline std::vector<value_location>
         enumerate_table_children(
-            const document&,
-            const value_location&,
-            std::string_view)
+            const document& doc,
+            const value_location& parent,
+            std::string_view /*token*/)
         {
-            // Placeholder: rows / columns later
-            return {};
+std::cout << "    -- trace: enumerate_table_children()\n";
+            std::vector<value_location> out;
+
+            reflect::inspect_context ctx{ &doc };
+            auto insp = reflect::inspect(ctx, parent.addr);
+
+            for (auto const& child : insp.structural_children(ctx))
+            {
+                if (child.kind != reflect::structural_child::kind::row)
+                    continue;
+
+                auto child_addr = insp.extend_address(child);
+
+                out.push_back({
+                    child_addr,
+                    location_kind::row_scope,
+                    nullptr
+                });
+            }
+
+            return out;
         }
 
         inline std::vector<value_location>
         enumerate_row_children(
-            const document&,
-            const value_location&,
-            std::string_view)
+            const document& doc,
+            const value_location& parent,
+            std::string_view token)
         {
-            return {};
+std::cout << "    -- trace: enumerate_row_children(" << token << ")\n";
+            std::vector<value_location> out;
+
+            reflect::inspect_context ctx{ &doc };
+            auto insp = reflect::inspect(ctx, parent.addr);
+
+            for (auto const& child : insp.structural_children(ctx))
+            {
+                if (child.kind != reflect::structural_child::kind::column)
+                    continue;
+
+                if (child.name != token)
+                    continue;
+
+                auto child_addr = insp.extend_address(child);
+                auto child_insp = reflect::inspect(ctx, child_addr);
+
+                if (child_insp.value)
+                {
+                    out.push_back({
+                        child_addr,
+                        location_kind::terminal_value,
+                        child_insp.value
+                    });
+                }
+            }
+
+            return out;
         }
 
         inline std::vector<value_location>
         enumerate_value_children(
-            const document&,
-            const value_location&,
-            std::string_view)
+            const document& doc,
+            const value_location& parent,
+            std::string_view token)
         {
-            // Arrays / predicates later
-            return {};
+std::cout << "    -- trace: enumerate_value_children(" << token << ")\n";
+            std::vector<value_location> out;
+
+            if (!parent.value_ptr)
+                return out;
+
+            if (!reflect::is_array(parent.value_ptr->type))
+                return out;
+
+            // index token must be numeric
+            std::size_t index = 0;
+            if (auto [p, ec] = std::from_chars(
+                    token.data(),
+                    token.data() + token.size(),
+                    index
+                );
+                ec != std::errc{} || p != token.data() + token.size())
+            {
+                return out;
+            }
+
+            reflect::inspect_context ctx{ &doc };
+            auto insp = reflect::inspect(ctx, parent.addr);
+
+            for (auto const& child : insp.structural_children(ctx))
+            {
+                if (child.kind != reflect::structural_child::kind::index)
+                    continue;
+
+                if (child.ordinal != index)
+                    continue;
+
+                auto child_addr = insp.extend_address(child);
+                auto child_insp = reflect::inspect(ctx, child_addr);
+
+                if (child_insp.value)
+                {
+                    out.push_back({
+                        child_addr,
+                        location_kind::terminal_value,
+                        child_insp.value
+                    });
+                }
+            }
+
+            return out;
         }
+
 
         // --------------------------------------------------------------
         // Dispatch
@@ -192,16 +296,28 @@ namespace arf
             switch (loc.kind)
             {
                 case location_kind::category_scope:
+                {   
+//std::cout << "    -- trace: location_kind::category_scope\n"; 
                     return enumerate_category_children(doc, loc, token);
+                }
 
                 case location_kind::table_scope:
+                {   
+std::cout << "    -- trace: location_kind::table_scope\n"; 
                     return enumerate_table_children(doc, loc, token);
+                }
 
                 case location_kind::row_scope:
+                {   
+std::cout << "    -- trace: location_kind::row_scope\n"; 
                     return enumerate_row_children(doc, loc, token);
+                }
 
                 case location_kind::terminal_value:
+                {   
+std::cout << "    -- trace: location_kind::terminal_value\n"; 
                     return enumerate_value_children(doc, loc, token);
+                }
             }
 
             return {};
@@ -218,6 +334,9 @@ namespace arf
             std::string_view token)
         {
             working_set next;
+
+            if (current.empty())
+                return next;
 
             for (const auto& loc : current)
             {
@@ -356,6 +475,15 @@ namespace arf
                     segments.empty() ? 0 : segments.size() - 1
                 });
             }
+            
+            else if (locations_.size() > 1)
+            {
+                issues_.push_back({
+                    query_issue_kind::ambiguous,
+                    std::string(path),
+                    segments.size() - 1
+                });
+            }
 
             return *this;
         }
@@ -421,7 +549,7 @@ namespace arf
     private:
         const document*                   doc_ { nullptr };
         std::vector<value_location>       locations_;
-        std::vector<query_issue>          issues_;
+        mutable std::vector<query_issue>  issues_;
 
         template<value_type vt>
         typed_value const *
@@ -438,6 +566,11 @@ namespace arf
             if (locations_.size() > 1)
             {
                 *err = query_issue_kind::ambiguous;
+                issues_.push_back({
+                    query_issue_kind::ambiguous,
+                    "<extraction>",
+                    0
+                });                
                 return nullptr;
             }
 

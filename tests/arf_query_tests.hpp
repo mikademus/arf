@@ -149,14 +149,18 @@ namespace arf::tests
             EXPECT(arr.at(1).type == value_type::integer && std::get<std::int64_t>(arr.at(1).val) == 13, "arr[1] != 13");
         }
 
-        // Testing query for the same data
+        // Query behaviour
         {
-        // FINISH ME!
-            auto q = query( ctx.document, "top.arr.1" );
+            auto q = query(ctx.document, "top.arr.1");
+
+            EXPECT(!q.empty(), "Query should resolve");
+            EXPECT(q.locations().size() == 1, "Query should resolve without anbiguity");
             auto v = q.as_integer();
+            EXPECT(v.has_value(), "Result should be integer");
+            EXPECT(*v == 13, "top.arr.1 should evaluate to 13");
         }
-        
-        return false;
+
+        return true;
     }
 
     // -----------------------------------------------------------------
@@ -203,8 +207,7 @@ namespace arf::tests
                 //.where("race", "orcs")
                 .select("poise");
 
-        return false;                
-        EXPECT(res.locations().size() == 2, "");
+        EXPECT(res.locations().size() == 2, "Should return two matching rows");
 
         return true;
     }
