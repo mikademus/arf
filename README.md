@@ -185,7 +185,14 @@ my_array:str[] = foo|bar|baz
   1   1|2
   2   3|4|5|6|7
 ```
-Lists must always be type annotated or will be treated as strings.
+Lists must always be type annotated or will be treated as strings. Note that the `[]` is a verbatim symbol and does not and cannot take the array length inside the brackets. 
+
+**Arrays are single-dimensional only.** Arf! does not support nested arrays or multi-dimensional array syntax. This design choice maintains:
+- Syntactic simplicity (no bracket nesting required)
+- Human readability (flat data with clear semantic context)
+- Parsing simplicity (single-pass, no depth tracking)
+
+Each array element has semantic context from its containing structure (key name, column header, category). Nested arrays would lose this contextual clarity and go against Arf!'s human-first design philosophy.
 
 ### Line comments
 ```scala
