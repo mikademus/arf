@@ -2,6 +2,17 @@
 // Version 0.3.0
 // Copyright 2025 Mikael Ueno A
 // Licenced as-is under the MIT licence.
+// 
+// The query API provides a fluent interface for selecting and extracting
+// values from Arf! documents. Queries operate on "value locations" rather
+// than navigating object graphs, supporting:
+//
+// - Dot-path selection: query(doc, "world.config.seed")
+// - Fluent refinement: query(doc, "items").table(0).rows()
+// - Predicate filtering: .where(predicate{...})
+// - Singular/plural extraction: .as_integer() or .integers()
+//
+// See query_interface.md for detailed usage patterns.
 
 #ifndef ARF_QUERY_HPP
 #define ARF_QUERY_HPP
@@ -24,22 +35,38 @@ namespace arf
     template<typename T>
     struct query_result;
 
-// =====================================================================
+//======================================================================
 // Public API:
 // =====================================================================
+// Entry points
+// ------------
+//
+// Basic usage:
+//   auto seed = get_integer(doc, "world.seed");
+//   if (seed) { /* use *seed */ }
+//
+// Fluent queries:
+//   auto items = query(doc, "inventory")
+//                   .table(0)
+//                   .rows()
+//                   .where(predicate{"rarity", eq("legendary")})
+//                   .strings();  // Get all matching names
+//
+//======================================================================
 
     inline query_handle query(const document& doc) noexcept;
     inline query_handle query(const document& doc, std::string_view path) noexcept;
 
-// Convenience getters
-// -------------------    
+// Convenience getters (exact type match required)
+// -------------------------------------------------
     inline query_result<int64_t>        get_integer(const document& doc, std::string_view path) noexcept;
     inline query_result<double>         get_real(const document& doc, std::string_view path) noexcept;
     inline query_result<std::string>    get_string(const document& doc, std::string_view path) noexcept;
     inline query_result<bool>           get_bool(const document& doc, std::string_view path) noexcept;
 
-// Converting convenience getters
-// -------------------    
+// Converting convenience getters (attempts string-to-type 
+// conversion if requested type differes from stored type)
+// ---------------------------------------------------------------------
     inline query_result<int64_t>        get_as_integer(const document& doc, std::string_view path) noexcept;
     inline query_result<double>         get_as_real(const document& doc, std::string_view path) noexcept;
     inline query_result<std::string>    get_as_string(const document& doc, std::string_view path) noexcept;
@@ -52,9 +79,9 @@ namespace arf
     {
         none,
         empty,              // enumeration returned empty result set
-        not_found,          // queried item not found
+        not_found,          // path does not resolve
         invalid_index,      // OOB index / the index doesn't exist 
-        ambiguous,          // multiple matches
+        ambiguous,          // multiple matches when singular expected
         type_mismatch,      // value is of another type than requested
         conversion_failed,  // attempt to convert value between types failed
         no_literal,         // the source_literal member of the value is empty
@@ -87,10 +114,29 @@ namespace arf
         const typed_value*         value_ptr { nullptr };
     };
 
-// =====================================================================
+//======================================================================
 // Query predicates [ for .where(pred) ]
 // =====================================================================
-
+//
+// Predicate for row filtering
+//
+// Predicates filter rows in table contexts based on column values.
+//
+// Construction:
+//   predicate{"column_name", predicate_op::eq, value}
+//   predicate{column_index, predicate_op::gt, value}
+//
+// Supported operators:
+//   eq, ne, lt, le, gt, ge
+//
+// Value must match column type (no implicit conversion).
+//
+// Example:
+//   query(doc, "items")
+//       .table(0)
+//       .where(predicate{"rarity", predicate_op::eq, "legendary"})
+//
+//----------------------------------------------------------------------
     enum class predicate_op
     {
         eq, ne, lt, le, gt, ge
@@ -107,6 +153,214 @@ namespace arf
         predicate_op op;
         typed_value  rhs;
     };
+
+//======================================================================
+// Query handle
+// =====================================================================
+// 
+// Represents a progressive query over a document. Each method narrows
+// or transforms the working set of value locations.
+//
+// NOTE that each selection method MUTATES the working set in place and
+// returns *this for chaining.
+//
+//     IMPORTANT: Query handles are MUTABLE and STATEFUL.
+//     Calling a method modifies the handle. To branch queries, copy
+//     the handle BEFORE calling methods:
+//
+//     auto base = query(doc, "world").table(0);
+//     
+//     auto copy1 = base;  // Copy before branching
+//     auto foos = copy1.rows("foo");
+//     
+//     auto copy2 = base;  // Copy again for second branch
+//     auto bars = copy2.rows("bar");
+//
+// Handles are lightweight (pointer + vectors) and cheap to copy.
+// They reference the document but do not own it - the document must
+// outlive all query handles.
+//
+//-----------------------------------------------------------------------
+    class query_handle
+    {
+        template <typename T>
+        friend struct query_result;
+        
+    public:
+        explicit query_handle(const document& doc) noexcept : doc_(&doc) {}
+
+        // --------------------------------------------------------------
+        // Selectors / narrowing operations
+        // (return *this for chaining)
+        // --------------------------------------------------------------
+
+        query_handle& select(std::string_view path);
+
+        query_handle& tables();
+        query_handle& table(size_t ordinal);
+
+        query_handle& rows();
+        query_handle& row(size_t ordinal);
+        query_handle& row(std::string_view name);
+
+        query_handle& where(predicate pred);
+
+        // ------------------------------------------------------------
+        // projection (shape transformation, not filtering)
+        // ------------------------------------------------------------
+        //
+        // project() declares which columns should be extracted from
+        // resolved row sets. It does NOT affect query resolution,
+        // ambiguity, or cardinality.
+        //
+        // Intended usage:
+        //   query(...).table(0).rows().where(...).project("hp", "mp")
+        //
+        // Until implemented, this is a no-op placeholder.
+        //
+        template <std::convertible_to<std::string_view>... Names>
+        query_handle& project(Names&&... names)
+        {
+            std::array<std::string_view, sizeof...(Names)> cols {
+                std::string_view(std::forward<Names>(names))...
+            };
+            return project_impl(cols);
+        };        
+
+
+        // --------------------------------------------------------------
+        // Status of the query (of the result)
+        // --------------------------------------------------------------
+
+        bool empty() const noexcept { return locations_.empty(); }
+        bool ambiguous() const noexcept { return locations_.size() > 1; }
+
+        // --------------------------------------------------------------
+        // Information about working set (about the result)
+        // --------------------------------------------------------------
+
+        const std::vector<value_location>& locations() const noexcept { return locations_; }
+        const std::vector<query_issue>& issues() const noexcept { return issues_; }
+
+        // --------------------------------------------------------------
+        // Scalar extraction
+        // (Extraction methods return query_result<T>)
+        // --------------------------------------------------------------
+
+        query_result<int64_t>     as_integer(bool convert = false) const noexcept;
+        query_result<double>      as_real(bool convert = false) const noexcept;
+        query_result<bool>        as_bool() const noexcept; // conversion disallowed
+        query_result<std::string> as_string(bool convert = false) const noexcept;
+
+        // TODO: arrays
+
+    private:
+        const document*                   doc_ { nullptr };
+        std::vector<value_location>       locations_;
+        mutable std::vector<query_issue>  issues_;
+
+        // Note: may add ambiguity diagnostic to issues_ (mutable)
+        template<value_type vt>
+        typed_value const *
+        common_extraction_checks(query_issue_kind* err) const noexcept;
+
+        template<typename T>
+        bool extract_convert(T & out, query_issue_kind* err) const noexcept;
+
+        template<value_type Vt, typename T>
+        query_result<T>
+        scalar_extract(bool convert) const noexcept;
+
+        query_handle& project_impl(std::span<const std::string_view> column_names);        
+    };
+
+//======================================================================
+// query_result<T> - Result container with error information
+// =====================================================================
+//
+// (Minimal replacement for C++23 std::expected).
+//
+// Combines std::optional<T> interface with error reporting.
+// Queries can fail for several reasons:
+//   - not_found: Path doesn't resolve
+//   - ambiguous: Multiple matches when singular expected
+//   - type_mismatch: Value exists but wrong type
+//   - conversion_failed: Conversion attempted but failed
+//
+// Usage:
+//   auto res = query(doc, "world.seed").as_integer();
+//   if (res) {
+//       use(*res);
+//   } else {
+//       handle(res.error());
+//   }
+//
+//----------------------------------------------------------------------
+    template <typename T>//, typename E = query_issue_kind>
+    struct query_result
+    {
+        std::optional<T> storage;
+        query_issue_kind error_value {query_issue_kind::none};
+
+        query_result() = default;
+
+        query_result(std::nullopt_t) {}
+
+        query_result& operator=(std::nullopt_t)
+        {
+            storage = std::nullopt;
+            return *this;
+        }
+
+        query_result(T val)
+            : storage(std::move(val))
+        {}
+
+        query_result(query_issue_kind failure)
+        {
+            error_value = failure;
+        }
+
+        // Static helpers to clarify intent
+        static auto success(T val) -> query_result { return query_result(std::move(val)); }
+        
+        static auto failure(query_issue_kind err) -> query_result
+        {
+            query_result res;
+            res.error_value = std::move(err);
+            return res;
+        }
+
+        // --- std::optional interface ---
+
+        bool has_value() const { return storage.has_value(); }
+        explicit operator bool() const { return storage.has_value(); }
+
+        T& operator*() { return *storage; }
+        const T& operator*() const { return *storage; }
+
+        T* operator->() { return &*storage; }
+        const T* operator->() const { return &*storage; }
+
+        T& value()
+        {
+            if (!storage.has_value())
+                throw std::bad_optional_access();
+
+            return *storage;
+        }
+
+        template <typename U>
+        T value_or(U&& default_value) const
+        {
+            return storage.has_value() ? *storage : static_cast<T>(std::forward<U>(default_value));
+        }
+
+        // --- Error access (expected-like) ---
+
+        query_issue_kind& error() { return error_value; }
+        const query_issue_kind& error() const { return error_value; }
+    };    
 
 // =====================================================================
 // DETAILS
@@ -450,170 +704,6 @@ std::cout << "    -- trace: location_kind::terminal_value\n";
             return std::nullopt;
         }
     } // ns details
-
-// =====================================================================
-// query_result (optional-with-error)
-// ---------------------------------------------------------------------
-// minimal replacement for std::expected
-// =====================================================================
-
-    template <typename T>//, typename E = query_issue_kind>
-    struct query_result
-    {
-        std::optional<T> storage;
-        query_issue_kind error_value {query_issue_kind::none};
-
-        query_result() = default;
-
-        query_result(std::nullopt_t) {}
-
-        query_result& operator=(std::nullopt_t)
-        {
-            storage = std::nullopt;
-            return *this;
-        }
-
-        query_result(T val)
-            : storage(std::move(val))
-        {}
-
-        query_result(query_issue_kind failure)
-        {
-            error_value = failure;
-        }
-
-        // Static helpers to clarify intent
-        static auto success(T val) -> query_result { return query_result(std::move(val)); }
-        
-        static auto failure(query_issue_kind err) -> query_result
-        {
-            query_result res;
-            res.error_value = std::move(err);
-            return res;
-        }
-
-        // --- std::optional interface ---
-
-        bool has_value() const { return storage.has_value(); }
-        explicit operator bool() const { return storage.has_value(); }
-
-        T& operator*() { return *storage; }
-        const T& operator*() const { return *storage; }
-
-        T* operator->() { return &*storage; }
-        const T* operator->() const { return &*storage; }
-
-        T& value()
-        {
-            if (!storage.has_value())
-                throw std::bad_optional_access();
-
-            return *storage;
-        }
-
-        template <typename U>
-        T value_or(U&& default_value) const
-        {
-            return storage.has_value() ? *storage : static_cast<T>(std::forward<U>(default_value));
-        }
-
-        // --- Error access (expected-like) ---
-
-        query_issue_kind& error() { return error_value; }
-        const query_issue_kind& error() const { return error_value; }
-    };
-
-// =====================================================================
-// Query handle
-// =====================================================================
-
-    class query_handle
-    {
-    public:
-        explicit query_handle(const document& doc) noexcept : doc_(&doc) {}
-
-        // --------------------------------------------------------------
-        // Selectors / narrowing operations
-        // --------------------------------------------------------------
-
-        query_handle& select(std::string_view path);
-
-        query_handle& tables();
-        query_handle& table(size_t ordinal);
-
-        query_handle& rows();
-        query_handle& row(size_t ordinal);
-        query_handle& row(std::string_view name);
-
-        query_handle& where(predicate pred);
-
-        // ------------------------------------------------------------
-        // projection (shape transformation, not filtering)
-        // ------------------------------------------------------------
-        //
-        // project() declares which columns should be extracted from
-        // resolved row sets. It does NOT affect query resolution,
-        // ambiguity, or cardinality.
-        //
-        // Intended usage:
-        //   query(...).table(0).rows().where(...).project("hp", "mp")
-        //
-        // Until implemented, this is a no-op placeholder.
-        //
-        template <std::convertible_to<std::string_view>... Names>
-        query_handle& project(Names&&... names)
-        {
-            std::array<std::string_view, sizeof...(Names)> cols {
-                std::string_view(std::forward<Names>(names))...
-            };
-            return project_impl(cols);
-        };        
-
-
-        // --------------------------------------------------------------
-        // Status of the query (of the result)
-        // --------------------------------------------------------------
-
-        bool empty() const noexcept { return locations_.empty(); }
-        bool ambiguous() const noexcept { return locations_.size() > 1; }
-
-        // --------------------------------------------------------------
-        // Information about working set (about the result)
-        // --------------------------------------------------------------
-
-        const std::vector<value_location>& locations() const noexcept { return locations_; }
-        const std::vector<query_issue>& issues() const noexcept { return issues_; }
-
-        // --------------------------------------------------------------
-        // Scalar extraction
-        // --------------------------------------------------------------
-
-        query_result<int64_t>     as_integer(bool convert = false) const noexcept;
-        query_result<double>      as_real(bool convert = false) const noexcept;
-        query_result<bool>        as_bool() const noexcept; // conversion disallowed
-        query_result<std::string> as_string(bool convert = false) const noexcept;
-
-        // TODO: arrays
-
-    private:
-        const document*                   doc_ { nullptr };
-        std::vector<value_location>       locations_;
-        mutable std::vector<query_issue>  issues_;
-
-        // Note: may add ambiguity diagnostic to issues_ (mutable)
-        template<value_type vt>
-        typed_value const *
-        common_extraction_checks(query_issue_kind* err) const noexcept;
-
-        template<typename T>
-        bool extract_convert(T & out, query_issue_kind* err) const noexcept;
-
-        template<value_type Vt, typename T>
-        query_result<T>
-        scalar_extract(bool convert) const noexcept;
-
-        query_handle& project_impl(std::span<const std::string_view> column_names);        
-    };
 
 // =====================================================================
 // IMPLEMENTATIONS
