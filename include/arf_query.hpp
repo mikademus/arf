@@ -176,7 +176,8 @@ namespace arf
 // =====================================================================
 // 
 // Represents a progressive query over a document. Each method narrows
-// or transforms the working set of value locations.
+// or transforms the working set of value locations and returns *this
+// to allow chaining.
 //
 // NOTE that each selection method MUTATES the working set in place and
 // returns *this for chaining.
@@ -207,11 +208,14 @@ namespace arf
         explicit query_handle(const document& doc) noexcept : doc_(&doc) {}
 
         // --------------------------------------------------------------
-        // Selectors / narrowing operations
-        // (return *this for chaining)
+        // Generic path-parsing selector
         // --------------------------------------------------------------
 
         query_handle& select(std::string_view path);
+
+        // --------------------------------------------------------------
+        // Table enumerators and selectors
+        // --------------------------------------------------------------
 
         query_handle& tables();
         query_handle& table(size_t ordinal);
@@ -220,6 +224,17 @@ namespace arf
         query_handle& row(size_t ordinal);
         query_handle& row(std::string_view name);
 
+        // ------------------------------------------------------------
+        // where() 
+        // set narrowing by predicated row filtering
+        // ------------------------------------------------------------
+        //
+        // where() scope expansion rules
+        //  If the current working set contains:
+        //    - row_scope → filter rows
+        //    - table_scope → equivalent to rows().where(...)
+        //    - category_scope → expand to all tables under the category, then rows(), then apply where
+        //  If no rows exist after expansion, the result is empty (not an error).
         query_handle& where(predicate pred);
 
         // ------------------------------------------------------------
@@ -1031,14 +1046,30 @@ namespace arf
     // Shorthand: where() on table == rows().where()
     // -----------------------------------------------
         // Expand any table-scope locations to rows
+        bool has_rows = false;
         bool has_tables = false;
-        for (auto const& loc : locations_)
-            if (loc.kind == location_kind::table_scope)
-                has_tables = true;
-        if (has_tables)
-            rows();  // Expands all tables to rows
+        bool has_cats = false;
 
-int i = 0;
+        for (auto const& loc : locations_)
+        {
+            if (loc.kind == location_kind::row_scope)
+                has_rows = true;
+            else if (loc.kind == location_kind::table_scope)
+                has_tables = true;
+            else if (loc.kind == location_kind::category_scope)
+                has_cats = true;
+        }
+
+        // Expand only as needed, preserving narrowing semantics
+        if (!has_rows)
+        {
+            if (has_cats)
+                tables();
+
+            if (has_tables || has_cats)
+                rows();
+        }
+
     // Main filter:
     // -----------------------------------------------
         for (const auto& loc : locations_)
@@ -1097,17 +1128,81 @@ int i = 0;
         return *this;
     }
 
-    query_handle& query_handle::project_impl(std::span<const std::string_view> column_names)
+    query_handle& query_handle::project_impl(
+        std::span<const std::string_view> column_names)
     {
-        // Placeholder.
-        // Future implementation will:
-        //  - Validate column existence
-        //  - Record projection metadata
-        //  - Influence plural extraction helpers
-        //
-        // Deliberately does nothing for now.
+        std::vector<value_location> next;
+        issues_.clear();
+
+        for (const auto& loc : locations_)
+        {
+            if (loc.kind != location_kind::row_scope)
+                continue;
+
+            reflect::inspect_context ctx{ doc_ };
+            auto insp = reflect::inspect(ctx, loc.addr);
+
+            if (!insp.ok())
+                continue;
+
+            auto row_view =
+                std::get_if<document::table_row_view>(&insp.item);
+
+            if (!row_view)
+                continue;
+
+            for (auto name : column_names)
+            {
+                auto idx =
+                    details::resolve_column_index(row_view->table(), {std::string(name)});
+
+                if (!idx)
+                {
+                    issues_.push_back({
+                        query_issue_kind::invalid_index,
+                        std::string("project(\"") + std::string(name) + "\")",
+                        0
+                    });
+                    continue;
+                }
+
+                const auto& cells = row_view->node->cells;
+                if (*idx >= cells.size())
+                    continue;
+
+                const typed_value& cell = cells[*idx];
+
+                if (cell.type == value_type::unresolved)
+                    continue;
+
+                auto child = reflect::structural_child{
+                    .kind    = reflect::structural_child::kind::column,
+                    .name    = name,
+                    .ordinal = *idx
+                };
+
+                next.push_back({
+                    insp.extend_address(child),
+                    location_kind::terminal_value,
+                    &cell
+                });
+            }
+        }
+
+        locations_ = std::move(next);
+
+        if (locations_.empty())
+        {
+            issues_.push_back({
+                query_issue_kind::not_found,
+                "project()",
+                0
+            });
+        }
+
         return *this;
     }
+
 
     template<value_type vt>
     typed_value const *

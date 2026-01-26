@@ -178,9 +178,10 @@ namespace arf::tests
 
         auto ctx =
             query(doc.document, "world")
-                //.where("race", "orcs")
-                .select("poise");
+                .where(eq("race", "orcs"))
+                .project("poise");
 
+        EXPECT(!ctx.locations().empty(), "Query should resolve");
         EXPECT(ctx.locations().size() == 1, "Should not be multiple matches");
         EXPECT(ctx.as_string().has_value(), "Result should be string type");
         EXPECT(ctx.as_string().value() == "hostile", "The result is not the expected string");
@@ -203,21 +204,14 @@ namespace arf::tests
         )");
 
         auto q =
-            //query(ctx.document, "world")
-            //    //.where("race", "orcs")
-            //    .select("poise");
             query(ctx.document, "world")
                 .table(0)
                 .rows()
-                .where(eq("race", "orcs"));
-                // .where(predicate{"race", 
-                //                 predicate_op::eq, 
-                //                 "orcs"});
-                //.project("poise");
+                .where(eq("race", "orcs"))
+                .project("poise");
 
-        EXPECT(q.locations().size() == 2, "Should resolve two matching rows");
-        EXPECT(q.locations().front().kind == location_kind::row_scope,
-            "Plural query resolves to rows, not values");
+        EXPECT(q.locations().size() == 2, "Should resolve to two matches");
+        EXPECT(q.locations().front().kind == location_kind::terminal_value, "Plural query resolves to rows, not values");
 
         return true;
     }
@@ -376,8 +370,8 @@ namespace arf::tests
         auto res =
             query(ctx.document, "world")
                 .table(1)
-                //.where("race", "orcs")
-                .select("poise");
+                .where(eq("race", "orcs"))
+                .project("poise");
 
         EXPECT(!res.empty(), "Query should resolve");
         auto v = res.as_string();
@@ -440,6 +434,34 @@ namespace arf::tests
         return true;
     }    
 
+    bool projected_subset()
+    {
+        auto ctx = load(R"(
+            npc:
+                # name   hp:int   race
+                  npc1   12       dwarf
+                  npc2   11       elf
+                  npc3   10       gnome
+                  npc4   9        orc
+                  npc5   8        human
+        )");
+
+        auto q = query(ctx.document, "npc").where(ge("hp", 10)).project("name", "race");
+
+        for (const auto & l : q.locations())
+            std::cout << *l.value_ptr->source_literal << std::endl;
+        EXPECT(!q.locations().empty(), "Query should have resolved");
+        EXPECT(q.locations().size() == 6, "There should be six matches");
+
+        std::string_view strs[] = {"npc1", "dwarf", 
+                                   "npc2", "elf", 
+                                   "npc3", "gnome"};
+        for (int i = 0; i < 6; ++i)
+            EXPECT(*q.locations()[i].value_ptr->source_literal == strs[i], "String mismatch");
+
+        return true;
+    }
+
     void run_query_tests()
     {
         SUBCAT("Foundations");
@@ -463,6 +485,7 @@ namespace arf::tests
         RUN_TEST(numeric_promotion);
         SUBCAT("Access by identifier");
         RUN_TEST(query_table_row_by_string_id);
+        RUN_TEST(projected_subset);
     }
 }
 
