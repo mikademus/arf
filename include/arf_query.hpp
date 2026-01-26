@@ -52,6 +52,10 @@ namespace arf
 //                   .where(predicate{"rarity", eq("legendary")})
 //                   .strings();  // Get all matching names
 //
+// Path-like queries (see dotpath_query_syntax.md):
+//   auto items = query(doc, "inventory.#0.|rarity|.-legendary-")
+//                   .strings(); // Get all matching names
+//
 //======================================================================
 
     inline query_handle query(const document& doc) noexcept;
@@ -428,11 +432,202 @@ namespace arf
             return out;
         }
 
+        // Check if token is a row selector (-name-)
+        inline bool is_row_selector(std::string_view token)
+        {
+            return token.size() >= 2 && token.front() == '-' && token.back() == '-';
+        }
+
+        // Check if token is a column selector (|name|)
+        inline bool is_column_selector(std::string_view token)
+        {
+            return token.size() >= 2 && token.front() == '|' && token.back() == '|';
+        }
+
+        // Check if token is an array index ([n])
+        inline bool is_array_index(std::string_view token)
+        {
+            return token.size() >= 3 && token.front() == '[' && token.back() == ']';
+        }
+
+        // Extract name from row selector
+        inline std::string_view extract_row_name(std::string_view token)
+        {
+            return token.substr(1, token.size() - 2);
+        }
+
+        // Extract name from column selector
+        inline std::string_view extract_column_name(std::string_view token)
+        {
+            return token.substr(1, token.size() - 2);
+        }
+
+        // Extract index from array selector
+        inline std::optional<size_t> extract_array_index(std::string_view token)
+        {
+            auto inner = token.substr(1, token.size() - 2);
+            size_t index = 0;
+            auto [ptr, ec] = std::from_chars(
+                inner.data(),
+                inner.data() + inner.size(),
+                index
+            );
+            
+            if (ec == std::errc{} && ptr == inner.data() + inner.size())
+                return index;
+            
+            return std::nullopt;
+        }
+
 // =====================================================================
 // Core resolver
 // =====================================================================
 
         using working_set = std::vector<value_location>;
+
+        inline std::vector<value_location>
+        enumerate_table_children(
+            const document& doc,
+            const value_location& parent,
+            std::string_view token)
+        {
+            std::vector<value_location> out;
+
+            reflect::inspect_context ctx{ &doc };
+            auto insp = reflect::inspect(ctx, parent.addr);
+
+            // If token is a row selector, extract the name
+            std::string_view row_name;
+            bool filter_by_name = false;
+            
+            if (is_row_selector(token))
+            {
+                row_name = extract_row_name(token);
+                filter_by_name = true;
+            }
+
+            for (auto const& child : insp.structural_children(ctx))
+            {
+                if (child.kind != reflect::structural_child::kind::row)
+                    continue;
+
+                auto child_addr = insp.extend_address(child);
+                
+                // If filtering by name, check it
+                if (filter_by_name)
+                {
+                    reflect::inspect_context row_ctx{ &doc };
+                    auto row_insp = reflect::inspect(row_ctx, child_addr);
+                    
+                    if (auto row_view = std::get_if<document::table_row_view>(&row_insp.item))
+                    {
+                        if (row_view->name() != row_name)
+                            continue;  // Skip non-matching rows
+                    }
+                }
+
+                out.push_back({
+                    child_addr,
+                    location_kind::row_scope,
+                    nullptr
+                });
+            }
+
+            return out;
+        }
+
+        inline std::vector<value_location>
+        enumerate_row_children(
+            const document& doc,
+            const value_location& parent,
+            std::string_view token)
+        {
+            std::vector<value_location> out;
+
+            reflect::inspect_context ctx{ &doc };
+            auto insp = reflect::inspect(ctx, parent.addr);
+
+            // Extract column name if token is a column selector
+            std::string_view col_name = is_column_selector(token) 
+                ? extract_column_name(token) 
+                : token;
+
+            for (auto const& child : insp.structural_children(ctx))
+            {
+                if (child.kind != reflect::structural_child::kind::column)
+                    continue;
+
+                if (child.name != col_name)
+                    continue;
+
+                auto child_addr = insp.extend_address(child);
+                auto child_insp = reflect::inspect(ctx, child_addr);
+
+                if (child_insp.value)
+                {
+                    out.push_back({
+                        child_addr,
+                        location_kind::terminal_value,
+                        child_insp.value
+                    });
+                }
+            }
+
+            return out;
+        }
+
+        // Category → Tables → Rows → Cells
+        inline std::vector<value_location>
+        expand_category_to_cells(
+            const document& doc,
+            const value_location& parent,
+            std::string_view col_token)
+        {
+            std::vector<value_location> out;
+            
+            reflect::inspect_context ctx{ &doc };
+            auto insp = reflect::inspect(ctx, parent.addr);
+            
+            for (const auto& child : insp.structural_children(ctx))
+            {
+                if (child.kind != reflect::structural_child::kind::table)
+                    continue;
+                    
+                value_location table_loc{
+                    insp.extend_address(child),
+                    location_kind::table_scope,
+                    nullptr
+                };
+                
+                auto rows = enumerate_table_children(doc, table_loc, "");
+                for (auto& row : rows)
+                {
+                    auto cells = enumerate_row_children(doc, row, col_token);
+                    out.insert(out.end(), cells.begin(), cells.end());
+                }
+            }
+            
+            return out;
+        }
+        
+        // Table → Rows → Cells
+        inline std::vector<value_location>
+        expand_table_to_cells(
+            const document& doc,
+            const value_location& parent,
+            std::string_view col_token)
+        {
+            std::vector<value_location> out;
+            
+            auto rows = enumerate_table_children(doc, parent, "");
+            for (auto& row : rows)
+            {
+                auto cells = enumerate_row_children(doc, row, col_token);
+                out.insert(out.end(), cells.begin(), cells.end());
+            }
+            
+            return out;
+        }
 
     // --------------------------------------------------------------
     // Core resolver: Enumerators
@@ -551,69 +746,6 @@ namespace arf
         }
 
         inline std::vector<value_location>
-        enumerate_table_children(
-            const document& doc,
-            const value_location& parent,
-            std::string_view /*token*/)
-        {
-            std::vector<value_location> out;
-
-            reflect::inspect_context ctx{ &doc };
-            auto insp = reflect::inspect(ctx, parent.addr);
-
-            for (auto const& child : insp.structural_children(ctx))
-            {
-                if (child.kind != reflect::structural_child::kind::row)
-                    continue;
-
-                auto child_addr = insp.extend_address(child);
-
-                out.push_back({
-                    child_addr,
-                    location_kind::row_scope,
-                    nullptr
-                });
-            }
-
-            return out;
-        }
-
-        inline std::vector<value_location>
-        enumerate_row_children(
-            const document& doc,
-            const value_location& parent,
-            std::string_view token)
-        {
-            std::vector<value_location> out;
-
-            reflect::inspect_context ctx{ &doc };
-            auto insp = reflect::inspect(ctx, parent.addr);
-
-            for (auto const& child : insp.structural_children(ctx))
-            {
-                if (child.kind != reflect::structural_child::kind::column)
-                    continue;
-
-                if (child.name != token)
-                    continue;
-
-                auto child_addr = insp.extend_address(child);
-                auto child_insp = reflect::inspect(ctx, child_addr);
-
-                if (child_insp.value)
-                {
-                    out.push_back({
-                        child_addr,
-                        location_kind::terminal_value,
-                        child_insp.value
-                    });
-                }
-            }
-
-            return out;
-        }
-
-        inline std::vector<value_location>
         enumerate_value_children(
             const document& doc,
             const value_location& parent,
@@ -627,17 +759,15 @@ namespace arf
             if (!is_array(parent.value_ptr->type))
                 return out;
 
-            // index token must be numeric
-            std::size_t index = 0;
-            if (auto [p, ec] = std::from_chars(
-                    token.data(),
-                    token.data() + token.size(),
-                    index
-                );
-                ec != std::errc{} || p != token.data() + token.size())
-            {
-                return out;
-            }
+            // Extract index from [n] syntax
+            auto index_opt = is_array_index(token) 
+                ? extract_array_index(token) 
+                : std::nullopt;
+            
+            if (!index_opt)
+                return out;  // Invalid index syntax
+
+            size_t index = *index_opt;
 
             reflect::inspect_context ctx{ &doc };
             auto insp = reflect::inspect(ctx, parent.addr);
@@ -666,6 +796,57 @@ namespace arf
             return out;
         }
 
+        inline std::vector<value_location>
+        enumerate_table_to_cells(
+            const document& doc,
+            const value_location& parent,
+            std::string_view col_token)
+        {
+            std::vector<value_location> out;
+
+            // Step 1: Get all rows (reuse enumerate_table_children)
+            auto all_rows = enumerate_table_children(doc, parent, "");
+            
+            // Step 2: Extract column from each row (reuse enumerate_row_children)
+            for (auto& row_loc : all_rows)
+            {
+                auto cells = enumerate_row_children(doc, row_loc, col_token);
+                out.insert(out.end(), cells.begin(), cells.end());
+            }
+
+            return out;
+        }       
+
+        inline std::vector<value_location>
+        enumerate_category_to_cells(
+            const document& doc,
+            const value_location& parent,
+            std::string_view col_token)
+        {
+            std::vector<value_location> out;
+
+            reflect::inspect_context ctx{ &doc };
+            auto insp = reflect::inspect(ctx, parent.addr);
+
+            for (const auto& child : insp.structural_children(ctx))
+            {
+                if (child.kind != reflect::structural_child::kind::table)
+                    continue;
+
+                value_location table_loc{
+                    insp.extend_address(child),
+                    location_kind::table_scope,
+                    nullptr
+                };
+
+                // Reuse enumerate_table_to_cells
+                auto cells = enumerate_table_to_cells(doc, table_loc, col_token);
+                out.insert(out.end(), cells.begin(), cells.end());
+            }
+
+            return out;
+        }        
+
     // --------------------------------------------------------------
     // Core resolver: Dispatch
     // --------------------------------------------------------------
@@ -676,6 +857,83 @@ namespace arf
             const value_location& loc,
             std::string_view token)
         {
+            // Array index selector: [n]
+            // ============================================================
+            if (is_array_index(token))
+            {
+                if (loc.kind == location_kind::terminal_value)
+                    return enumerate_value_children(doc, loc, token);
+                
+                // Error: array index on non-value
+                return {};
+            }
+
+            // Row selector: -name-
+            // ============================================================
+            if (is_row_selector(token))
+            {
+                if (loc.kind == location_kind::table_scope)
+                    return enumerate_table_children(doc, loc, token);
+                
+                if (loc.kind == location_kind::category_scope)
+                {
+                    // Inline: enumerate tables, then rows
+                    std::vector<value_location> out;
+                    
+                    reflect::inspect_context ctx{ &doc };
+                    auto insp = reflect::inspect(ctx, loc.addr);
+                    
+                    for (const auto& child : insp.structural_children(ctx))
+                    {
+                        if (child.kind != reflect::structural_child::kind::table)
+                            continue;
+                            
+                        value_location table_loc{
+                            insp.extend_address(child),
+                            location_kind::table_scope,
+                            nullptr
+                        };
+                        
+                        auto rows = enumerate_table_children(doc, table_loc, token);
+                        out.insert(out.end(), rows.begin(), rows.end());
+                    }
+                    
+                    return out;
+                }
+                
+                return {};
+            }
+
+
+            // Column selector: |name|
+            // ============================================================
+            if (is_column_selector(token))
+            {
+                if (loc.kind == location_kind::row_scope)
+                    return enumerate_row_children(doc, loc, token);
+                
+                if (loc.kind == location_kind::table_scope)
+                {
+                    // Inline: enumerate rows, then cells
+                    std::vector<value_location> out;
+                    auto all_rows = enumerate_table_children(doc, loc, "");
+                    for (auto& row_loc : all_rows)
+                    {
+                        auto cells = enumerate_row_children(doc, row_loc, token);
+                        out.insert(out.end(), cells.begin(), cells.end());
+                    }
+                    return out;
+                }
+
+                // Implicit table introduction: category → tables → rows → cells
+                if (loc.kind == location_kind::category_scope)
+                    return enumerate_category_to_cells(doc, loc, token);
+                
+                return {};
+            }
+
+            // Normal dispatch for other tokens
+            // ============================================================
             switch (loc.kind)
             {
                 case location_kind::category_scope:

@@ -151,13 +151,13 @@ namespace arf::tests
 
         // Query behaviour
         {
-            auto q = query(ctx.document, "top.arr.1");
+            auto q = query(ctx.document, "top.arr.[1]");
 
             EXPECT(!q.empty(), "Query should resolve");
             EXPECT(q.locations().size() == 1, "Query should resolve without anbiguity");
             auto v = q.as_integer();
             EXPECT(v.has_value(), "Result should be integer");
-            EXPECT(*v == 13, "top.arr.1 should evaluate to 13");
+            EXPECT(*v == 13, "top.arr.[1] should evaluate to 13");
         }
 
         return true;
