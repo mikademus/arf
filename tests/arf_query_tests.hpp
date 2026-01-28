@@ -480,6 +480,83 @@ namespace arf::tests
         return true;
     }
 
+    doc_context script_country_table()
+    {
+        return load(R"(
+            world:
+                # country   capital
+                  Japan     Tokyo
+                  Sweden    Stockholm
+                  USA       Washington
+
+                # foo       bar
+                  one       null
+                  two       null
+        )");
+    }
+
+    //bool flowing_explicit_table()
+    //{
+    //    auto ctx = script_country_table();
+    //    auto q = query(ctx.document, "world").table(0).row("Sweden").column("capital");
+    //    EXPECT(q.locations().size() == 1, "Should have one match");
+    //    auto res = q.as_string();
+    //    EXPECT(res.has_value(), "The result should be string type");
+    //    EXPECT(res.value() == "Stockholm", "Capital should be Stockholm");
+    //
+    //    return true;
+    //}
+
+    bool dotpath_explicit_table()
+    {
+        auto ctx = script_country_table();
+        auto q = query(ctx.document, "world.#0.-Sweden-.|capital|");
+        EXPECT(q.locations().size() == 1, "Should have one match");
+        auto res = q.as_string();
+        EXPECT(res.has_value(), "The result should be string type");
+        EXPECT(res.value() == "Stockholm", "Capital should be Stockholm");
+
+        return true;
+    }
+
+    bool dotpath_implicit_table_introduction()
+    {
+        auto ctx = script_country_table();
+        auto q = query(ctx.document, "world.-Japan-.|capital|");
+        EXPECT(!q.empty(), "Query should resolve");
+        EXPECT(q.locations().size() == 1, "Should have one match");
+        auto res = q.as_string();
+        EXPECT(res.has_value(), "The result should be string type");
+        EXPECT(res.value() == "Tokyo", "Capital should be Tokyo");
+
+        return true;
+    }
+
+
+    bool dotpath_explicit_table_commutative_column_first()
+    {
+        auto ctx = script_country_table();
+        auto q = query(ctx.document, "world.#0.|capital|.-USA-");
+        EXPECT(q.locations().size() == 1, "Should have one match");
+        auto res = q.as_string();        
+        EXPECT(res.has_value(), "The result should be string type");
+        EXPECT(res.value() == "Washington", "Capital should be Washington");
+
+        return true;
+    }
+    
+    bool dotpath_implicit_table_commutative_column_first()
+    {
+        auto ctx = script_country_table();
+        auto q = query(ctx.document, "world.|capital|.-USA-");
+        EXPECT(q.locations().size() == 1, "Should have one match");
+        auto res = q.as_string();
+        EXPECT(res.has_value(), "The result should be string type");
+        EXPECT(res.value() == "Washington", "Capital should be Washington");
+
+        return true;
+    }
+
     void run_query_tests()
     {
         SUBCAT("Foundations");
@@ -497,6 +574,11 @@ namespace arf::tests
         RUN_TEST(find_multiple_tables);
         RUN_TEST(select_table_by_dotpath);
         RUN_TEST(select_table_by_flowing_syntax);
+        RUN_TEST(flowing_explicit_table);
+        RUN_TEST(dotpath_explicit_table);
+        RUN_TEST(dotpath_implicit_table_introduction);
+        RUN_TEST(dotpath_explicit_table_commutative_column_first);
+        RUN_TEST(dotpath_implicit_table_commutative_column_first);
         SUBCAT("Access table rows");
         RUN_TEST(enumerate_all_rows_in_table);
         RUN_TEST(enumerate_named_rows_in_table);

@@ -92,6 +92,24 @@ namespace arf
         not_a_value,        // the queried address is not a value terminal
     };
 
+    std::string_view to_string(query_issue_kind kind)
+    {
+        switch (kind)
+        {
+            using enum query_issue_kind;
+            case none: return "none";
+            case empty: return "empty";
+            case not_found: return "not_found";
+            case invalid_index: return "invalid_index";
+            case ambiguous: return "ambiguous";
+            case type_mismatch: return "type_mismatch";
+            case conversion_failed: return "conversion_failed";
+            case no_literal: return "no_literal";
+            case not_a_value: return "not_a_value";
+            default: return "unknown";
+        }
+    }
+
     struct query_issue
     {
         query_issue_kind kind { query_issue_kind::none };
@@ -118,6 +136,18 @@ namespace arf
         const typed_value*         value_ptr { nullptr };
     };
 
+    std::string_view to_string( location_kind loc )
+    {
+        switch (loc)
+        {
+            case location_kind::category_scope: return "category_scope";
+            case location_kind::table_scope: return "table_scope";
+            case location_kind::row_scope: return "row_scope";
+            case location_kind::terminal_value: return "terminal_value";
+            default: return "unknown";
+        }
+    }
+    
 //======================================================================
 // Query predicates [ for .where(pred) ]
 // =====================================================================
@@ -839,13 +869,25 @@ namespace arf
                     nullptr
                 };
 
-                // Reuse enumerate_table_to_cells
                 auto cells = enumerate_table_to_cells(doc, table_loc, col_token);
                 out.insert(out.end(), cells.begin(), cells.end());
             }
 
             return out;
         }        
+
+        inline std::vector<value_location>
+        collapse_row_to_cell(
+            const document& doc,
+            const value_location& row_loc,
+            std::string_view column)
+        {
+            return enumerate_row_children(
+                doc,
+                row_loc,
+                "|" + std::string(column) + "|"
+            );
+        }
 
     // --------------------------------------------------------------
     // Core resolver: Dispatch
@@ -865,70 +907,6 @@ namespace arf
                     return enumerate_value_children(doc, loc, token);
                 
                 // Error: array index on non-value
-                return {};
-            }
-
-            // Row selector: -name-
-            // ============================================================
-            if (is_row_selector(token))
-            {
-                if (loc.kind == location_kind::table_scope)
-                    return enumerate_table_children(doc, loc, token);
-                
-                if (loc.kind == location_kind::category_scope)
-                {
-                    // Inline: enumerate tables, then rows
-                    std::vector<value_location> out;
-                    
-                    reflect::inspect_context ctx{ &doc };
-                    auto insp = reflect::inspect(ctx, loc.addr);
-                    
-                    for (const auto& child : insp.structural_children(ctx))
-                    {
-                        if (child.kind != reflect::structural_child::kind::table)
-                            continue;
-                            
-                        value_location table_loc{
-                            insp.extend_address(child),
-                            location_kind::table_scope,
-                            nullptr
-                        };
-                        
-                        auto rows = enumerate_table_children(doc, table_loc, token);
-                        out.insert(out.end(), rows.begin(), rows.end());
-                    }
-                    
-                    return out;
-                }
-                
-                return {};
-            }
-
-
-            // Column selector: |name|
-            // ============================================================
-            if (is_column_selector(token))
-            {
-                if (loc.kind == location_kind::row_scope)
-                    return enumerate_row_children(doc, loc, token);
-                
-                if (loc.kind == location_kind::table_scope)
-                {
-                    // Inline: enumerate rows, then cells
-                    std::vector<value_location> out;
-                    auto all_rows = enumerate_table_children(doc, loc, "");
-                    for (auto& row_loc : all_rows)
-                    {
-                        auto cells = enumerate_row_children(doc, row_loc, token);
-                        out.insert(out.end(), cells.begin(), cells.end());
-                    }
-                    return out;
-                }
-
-                // Implicit table introduction: category → tables → rows → cells
-                if (loc.kind == location_kind::category_scope)
-                    return enumerate_category_to_cells(doc, loc, token);
-                
                 return {};
             }
 
@@ -956,17 +934,199 @@ namespace arf
     // Core resolver loop
     // --------------------------------------------------------------
 
+        struct axis_selection
+        {
+            std::optional<std::string_view> row;
+            std::optional<std::string_view> column;
+
+            void reset() noexcept
+            {
+                row.reset();
+                column.reset();
+            }
+
+            bool empty() const noexcept
+            {
+                return !row && !column;
+            }
+
+            bool complete() const noexcept
+            {
+                return row.has_value() && column.has_value();
+            }
+        };
+
+        inline std::vector<value_location>
+        resolve_axis_selections(
+            const document& doc,
+            const std::vector<value_location>& input,
+            axis_selection& axis)
+        {
+            std::vector<value_location> out;
+
+            for (const auto& loc : input)
+            {
+                // --------------------------------------------------
+                // Category scope
+                // --------------------------------------------------
+                if (loc.kind == location_kind::category_scope)
+                {
+                    reflect::inspect_context ctx{ &doc };
+                    auto insp = reflect::inspect(ctx, loc.addr);
+
+                    if (axis.row && axis.column)
+                    {
+                        // Both row and column specified
+                        for (const auto& child : insp.structural_children(ctx))
+                        {
+                            if (child.kind != reflect::structural_child::kind::table)
+                                continue;
+
+                            value_location table_loc{
+                                insp.extend_address(child),
+                                location_kind::table_scope,
+                                nullptr
+                            };
+
+                            // Find rows matching the row selector
+                            auto rows = enumerate_table_children(
+                                doc,
+                                table_loc,
+                                "-" + std::string(*axis.row) + "-"
+                            );
+
+                            // Extract the column from each matching row
+                            for (auto& row : rows)
+                            {
+                                auto cells = enumerate_row_children(
+                                    doc, 
+                                    row, 
+                                    "|" + std::string(*axis.column) + "|"
+                                );
+                                out.insert(out.end(), cells.begin(), cells.end());
+                            }
+                        }
+                    }
+                    else if (axis.column)
+                    {
+                        // Column only - extract from all rows
+                        auto cells = enumerate_category_to_cells(
+                            doc, 
+                            loc, 
+                            "|" + std::string(*axis.column) + "|"
+                        );
+                        out.insert(out.end(), cells.begin(), cells.end());
+                    }
+                    else if (axis.row)
+                    {
+                        // Row only - return matching rows
+                        for (const auto& child : insp.structural_children(ctx))
+                        {
+                            if (child.kind != reflect::structural_child::kind::table)
+                                continue;
+
+                            value_location table_loc{
+                                insp.extend_address(child),
+                                location_kind::table_scope,
+                                nullptr
+                            };
+
+                            auto rows = enumerate_table_children(
+                                doc,
+                                table_loc,
+                                "-" + std::string(*axis.row) + "-"
+                            );
+                            out.insert(out.end(), rows.begin(), rows.end());
+                        }
+                    }
+                }
+
+                // --------------------------------------------------
+                // Table scope
+                // --------------------------------------------------
+                else if (loc.kind == location_kind::table_scope)
+                {
+                    if (axis.row && axis.column)
+                    {
+                        // Find matching rows, extract column
+                        auto rows = enumerate_table_children(
+                            doc, 
+                            loc, 
+                            "-" + std::string(*axis.row) + "-"
+                        );
+
+                        for (auto& row : rows)
+                        {
+                            auto cells = enumerate_row_children(
+                                doc, 
+                                row, 
+                                "|" + std::string(*axis.column) + "|"
+                            );
+                            out.insert(out.end(), cells.begin(), cells.end());
+                        }
+                    }
+                    else if (axis.row)
+                    {
+                        auto rows = enumerate_table_children(
+                            doc, 
+                            loc, 
+                            "-" + std::string(*axis.row) + "-"
+                        );
+                        out.insert(out.end(), rows.begin(), rows.end());
+                    }
+                    else if (axis.column)
+                    {
+                        auto cells = enumerate_table_to_cells(
+                            doc, 
+                            loc, 
+                            "|" + std::string(*axis.column) + "|"
+                        );
+                        out.insert(out.end(), cells.begin(), cells.end());
+                    }
+                }
+
+                // --------------------------------------------------
+                // Row scope
+                // --------------------------------------------------
+                else if (loc.kind == location_kind::row_scope)
+                {
+                    if (axis.column)
+                    {
+                        auto cells = enumerate_row_children(
+                            doc, 
+                            loc, 
+                            "|" + std::string(*axis.column) + "|"
+                        );
+                        out.insert(out.end(), cells.begin(), cells.end());
+                    }
+                }
+            }
+
+            return out;
+        }
+
         inline working_set
         resolve_step(
             const document& doc,
             const working_set& current,
-            std::string_view token)
+            std::string_view token,
+            axis_selection& axis)
         {
+            // Axis tokens: do not enumerate yet
+            if (is_row_selector(token))
+            {
+                axis.row = extract_row_name(token);
+                return current;
+            }
+
+            if (is_column_selector(token))
+            {
+                axis.column = extract_column_name(token);
+                return current;
+            }
+
+            // Structural tokens: normal enumeration
             working_set next;
-
-            if (current.empty())
-                return next;
-
             for (const auto& loc : current)
             {
                 auto matches = enumerate_matching_children(doc, loc, token);
@@ -975,13 +1135,14 @@ namespace arf
 
             return next;
         }
-
+        
         inline working_set
         resolve_dot_path(
             const document& doc,
             std::span<const std::string_view> segments)
         {
             working_set current;
+            axis_selection axis;
 
             // Seed: root category scope
             current.push_back({
@@ -992,9 +1153,40 @@ namespace arf
 
             for (auto seg : segments)
             {
-                current = resolve_step(doc, current, seg);
+                // Axis selectors do NOT resolve immediately
+                if (details::is_row_selector(seg))
+                {
+                    axis.row = details::extract_row_name(seg);
+                    continue;
+                }
+
+                if (details::is_column_selector(seg))
+                {
+                    axis.column = details::extract_column_name(seg);
+                    continue;
+                }
+
+                // If we are about to structurally descend,
+                // first resolve any pending axis selections
+                if (axis.row || axis.column)
+                {
+                    current = resolve_axis_selections(doc, current, axis);
+                    axis.reset();  // ← Just reset, don't check any flags
+
+                    if (current.empty())
+                        return current;
+                }
+
+                // Normal structural step
+                current = resolve_step(doc, current, seg, axis);
                 if (current.empty())
-                    break;
+                    return current;
+            }
+
+            // Final axis resolution at end of path
+            if (axis.row || axis.column)
+            {
+                current = resolve_axis_selections(doc, current, axis);
             }
 
             return current;
