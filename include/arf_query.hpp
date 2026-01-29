@@ -258,6 +258,10 @@ namespace arf
         query_handle& row(size_t ordinal);
         query_handle& row(std::string_view name);
 
+        query_handle& columns() { return *this; }
+        query_handle& column(size_t ordinal) { return *this; }
+        query_handle& column(std::string_view name) { return *this; }
+
         // ------------------------------------------------------------
         // where() 
         // set narrowing by predicated row filtering

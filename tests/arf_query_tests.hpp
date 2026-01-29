@@ -495,17 +495,53 @@ namespace arf::tests
         )");
     }
 
-    //bool flowing_explicit_table()
-    //{
-    //    auto ctx = script_country_table();
-    //    auto q = query(ctx.document, "world").table(0).row("Sweden").column("capital");
-    //    EXPECT(q.locations().size() == 1, "Should have one match");
-    //    auto res = q.as_string();
-    //    EXPECT(res.has_value(), "The result should be string type");
-    //    EXPECT(res.value() == "Stockholm", "Capital should be Stockholm");
-    //
-    //    return true;
-    //}
+    bool flowing_explicit_table()
+    {
+        auto ctx = script_country_table();
+        auto q = query(ctx.document, "world").table(0).row("Sweden").column("capital");
+        EXPECT(q.locations().size() == 1, "Should have one match");
+        auto res = q.as_string();
+        EXPECT(res.has_value(), "The result should be string type");
+        EXPECT(res.value() == "Stockholm", "Capital should be Stockholm");
+    
+        return true;
+    }
+
+    bool flowing_explicit_table_commutative()
+    {
+        auto ctx = script_country_table();
+        auto q = query(ctx.document, "world").table(0).column("capital").row("Sweden");
+        EXPECT(q.locations().size() == 1, "Should have one match");
+        auto res = q.as_string();
+        EXPECT(res.has_value(), "The result should be string type");
+        EXPECT(res.value() == "Stockholm", "Capital should be Stockholm");
+    
+        return true;
+    }
+
+    bool flowing_implicit_table()
+    {
+        auto ctx = script_country_table();
+        auto q = query(ctx.document, "world").row("Sweden").column("capital");
+        EXPECT(q.locations().size() == 1, "Should have one match");
+        auto res = q.as_string();
+        EXPECT(res.has_value(), "The result should be string type");
+        EXPECT(res.value() == "Stockholm", "Capital should be Stockholm");
+    
+        return true;
+    }
+
+    bool flowing_implicit_table_commutative()
+    {
+        auto ctx = script_country_table();
+        auto q = query(ctx.document, "world").column("capital").row("Sweden");
+        EXPECT(q.locations().size() == 1, "Should have one match");
+        auto res = q.as_string();
+        EXPECT(res.has_value(), "The result should be string type");
+        EXPECT(res.value() == "Stockholm", "Capital should be Stockholm");
+    
+        return true;
+    }
 
     bool dotpath_explicit_table()
     {
@@ -574,7 +610,12 @@ namespace arf::tests
         RUN_TEST(find_multiple_tables);
         RUN_TEST(select_table_by_dotpath);
         RUN_TEST(select_table_by_flowing_syntax);
+        SUBCAT("Flowing API table rows");
         RUN_TEST(flowing_explicit_table);
+        RUN_TEST(flowing_explicit_table_commutative);
+        RUN_TEST(flowing_implicit_table);
+        RUN_TEST(flowing_implicit_table_commutative);
+        SUBCAT("Dotpath API table rows");
         RUN_TEST(dotpath_explicit_table);
         RUN_TEST(dotpath_implicit_table_introduction);
         RUN_TEST(dotpath_explicit_table_commutative_column_first);
