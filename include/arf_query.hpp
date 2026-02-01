@@ -63,17 +63,29 @@ namespace arf
 
 // Convenience getters (exact type match required)
 // -------------------------------------------------
-    inline query_result<int64_t>        get_integer(const document& doc, std::string_view path) noexcept;
-    inline query_result<double>         get_real(const document& doc, std::string_view path) noexcept;
-    inline query_result<std::string>    get_string(const document& doc, std::string_view path) noexcept;
-    inline query_result<bool>           get_bool(const document& doc, std::string_view path) noexcept;
+    query_result<int64_t>        get_integer(const document& doc, std::string_view path) noexcept;
+    query_result<double>         get_real(const document& doc, std::string_view path) noexcept;
+    query_result<std::string>    get_string(const document& doc, std::string_view path) noexcept;
+    query_result<bool>           get_bool(const document& doc, std::string_view path) noexcept;
 
 // Converting convenience getters (attempts string-to-type 
 // conversion if requested type differes from stored type)
 // ---------------------------------------------------------------------
-    inline query_result<int64_t>        get_as_integer(const document& doc, std::string_view path) noexcept;
-    inline query_result<double>         get_as_real(const document& doc, std::string_view path) noexcept;
-    inline query_result<std::string>    get_as_string(const document& doc, std::string_view path) noexcept;
+    query_result<int64_t>        get_as_integer(const document& doc, std::string_view path) noexcept;
+    query_result<double>         get_as_real(const document& doc, std::string_view path) noexcept;
+    query_result<std::string>    get_as_string(const document& doc, std::string_view path) noexcept;
+
+// Array element extraction
+// ---------------------------------------------------------------------
+    query_result<int64_t>        get_integer(const document& doc, std::string_view path, size_t index) noexcept;
+    query_result<double>         get_real(const document& doc, std::string_view path, size_t index) noexcept;
+    query_result<std::string>    get_string(const document& doc, std::string_view path, size_t index) noexcept;
+
+// Whole-array extraction
+// ---------------------------------------------------------------------
+    query_result<std::vector<int64_t>>      get_integers(const document& doc, std::string_view path) noexcept;
+    query_result<std::vector<double>>       get_reals(const document& doc, std::string_view path) noexcept;
+    query_result<std::vector<std::string>>  get_strings(const document& doc, std::string_view path) noexcept;
 
 // =====================================================================
 // Query issues
@@ -389,7 +401,9 @@ namespace arf
         query_result<bool>        as_bool() const noexcept; // conversion disallowed
         query_result<std::string> as_string(bool convert = false) const noexcept;
 
-        // TODO: arrays
+        query_result<std::vector<int64_t>>     as_integers() const noexcept;
+        query_result<std::vector<double>>      as_reals() const noexcept;
+        query_result<std::vector<std::string>> as_strings() const noexcept;
 
     private:
         const document*                   doc_ { nullptr };
@@ -1983,10 +1997,6 @@ namespace arf
                 continue;
             }
 
-            // Notice that the predicate here is a copy
-            // and changes will currently not be propagated. 
-            // pred.column.ref = *idx; // canonicalise
-
             const auto & cells = row_view->node->cells;
             if (*idx >= cells.size())
                 continue;
@@ -2212,6 +2222,75 @@ namespace arf
     }
 
 // =====================================================================
+// Whole-array extraction
+// =====================================================================
+// Each method resolves a single array-typed value location, then walks
+// its elements.  Errors follow the same conventions as the scalar
+// extractors: empty → empty_result, plural → ambiguous, wrong type →
+// type_mismatch.  An element that fails conversion is silently skipped
+// (its invalid/contamination flags already exist on the typed_value;
+// callers who need per-element diagnostics should use the fluent
+// index() path instead).
+// =====================================================================
+
+    query_result<std::vector<int64_t>>
+    query_handle::as_integers() const noexcept
+    {
+        const_cast<query_handle*>(this)->flush_pending_axis_();
+
+        query_issue_kind err;
+        if (auto v = common_extraction_checks<value_type::int_array>(&err); v != nullptr)
+        {
+            const auto& elems = std::get<std::vector<typed_value>>(v->val);
+            std::vector<int64_t> out;
+            out.reserve(elems.size());
+            for (const auto& e : elems)
+                if (e.type == value_type::integer)
+                    out.push_back(std::get<int64_t>(e.val));
+            return out;
+        }
+        return {err};
+    }
+
+    query_result<std::vector<double>>
+    query_handle::as_reals() const noexcept
+    {
+        const_cast<query_handle*>(this)->flush_pending_axis_();
+
+        query_issue_kind err;
+        if (auto v = common_extraction_checks<value_type::float_array>(&err); v != nullptr)
+        {
+            const auto& elems = std::get<std::vector<typed_value>>(v->val);
+            std::vector<double> out;
+            out.reserve(elems.size());
+            for (const auto& e : elems)
+                if (e.type == value_type::decimal)
+                    out.push_back(std::get<double>(e.val));
+            return out;
+        }
+        return {err};
+    }
+
+    query_result<std::vector<std::string>>
+    query_handle::as_strings() const noexcept
+    {
+        const_cast<query_handle*>(this)->flush_pending_axis_();
+
+        query_issue_kind err;
+        if (auto v = common_extraction_checks<value_type::string_array>(&err); v != nullptr)
+        {
+            const auto& elems = std::get<std::vector<typed_value>>(v->val);
+            std::vector<std::string> out;
+            out.reserve(elems.size());
+            for (const auto& e : elems)
+                if (e.type == value_type::string)
+                    out.push_back(std::get<std::string>(e.val));
+            return out;
+        }
+        return {err};
+    }
+
+// =====================================================================
 // Entry points
 // =====================================================================
 
@@ -2226,6 +2305,10 @@ namespace arf
         q.select(path);
         return q;
     }
+
+// =====================================================================
+// Single item typed extraction without conversion
+// =====================================================================
 
     inline query_result<int64_t> get_integer(const document& doc, std::string_view path) noexcept
     {
@@ -2247,6 +2330,10 @@ namespace arf
         return query(doc, path).as_bool();
     }
 
+// =====================================================================
+// Single item typed extraction with forced conversion
+// =====================================================================
+
     inline query_result<int64_t> get_as_integer(const document& doc, std::string_view path) noexcept
     {
         return query(doc, path).as_integer(true);
@@ -2260,6 +2347,50 @@ namespace arf
     inline query_result<std::string> get_as_string(const document& doc, std::string_view path) noexcept
     {
         return query(doc, path).as_string(true);
+    }
+
+// =====================================================================
+// Indexed element extraction
+// =====================================================================
+
+    inline query_result<int64_t>
+    get_integer(const document& doc, std::string_view path, size_t index) noexcept
+    {
+        return query(doc, path).index(index).as_integer();
+    }
+
+    inline query_result<double>
+    get_real(const document& doc, std::string_view path, size_t index) noexcept
+    {
+        return query(doc, path).index(index).as_real();
+    }
+
+    inline query_result<std::string>
+    get_string(const document& doc, std::string_view path, size_t index) noexcept
+    {
+        return query(doc, path).index(index).as_string();
+    }
+
+// =====================================================================
+// Whole-array extraction
+// =====================================================================
+
+    inline query_result<std::vector<int64_t>>
+    get_integers(const document& doc, std::string_view path) noexcept
+    {
+        return query(doc, path).as_integers();
+    }
+
+    inline query_result<std::vector<double>>
+    get_reals(const document& doc, std::string_view path) noexcept
+    {
+        return query(doc, path).as_reals();
+    }
+
+    inline query_result<std::vector<std::string>>
+    get_strings(const document& doc, std::string_view path) noexcept
+    {
+        return query(doc, path).as_strings();
     }
 
 } // namespace arf

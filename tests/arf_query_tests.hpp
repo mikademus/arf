@@ -597,6 +597,181 @@ namespace arf::tests
         return true;
     }
 
+    doc_context make_basic_document()
+    {
+        return load(R"(
+            root:
+                title = "hello"
+
+                #  a  b
+                   1  2
+                   3  4
+        )");
+    };
+
+    bool query_empty_set_stability()
+    {
+        auto ctx = make_basic_document();
+
+        auto q = query(ctx.document, "root.nonexistent");
+
+        // Sanity: first collapse is empty
+        EXPECT(q.locations().empty(), "Empty document should result in empty query");
+
+        // Further refinements must remain empty
+        auto q2 = q.tables();
+        auto q3 = q2.rows();
+        auto q4 = q3.columns();
+        auto q5 = q4.where(eq("foo", "bar"));
+
+        EXPECT(q2.locations().empty(), "Narrowing on empty set should return empty");
+        EXPECT(q3.locations().empty(), "Narrowing on empty set should return empty");
+        EXPECT(q4.locations().empty(), "Narrowing on empty set should return empty");
+        EXPECT(q5.locations().empty(), "Narrowing on empty set should return empty");
+
+        return true;
+    }
+
+    bool query_structural_mismatch_scalar_to_plural()
+    {
+        auto ctx = make_basic_document();
+        auto q = query(ctx.document, "root.title.#0");
+        EXPECT(q.locations().empty(), "There shouldn't be a table after a scalar");
+        return true;
+    }
+
+    bool query_structural_mismatch_table_on_non_table()
+    {
+        auto ctx = make_basic_document();
+        auto q = query(ctx.document, "root.title").tables();
+        EXPECT(q.locations().empty(), "There shouldn't be a table after a scalar");
+        return true;
+    }
+
+    bool query_predicate_on_incompatible_value_kind()
+    {
+        auto ctx = make_basic_document();
+        auto q = query(ctx.document, "root.title").where(gt("foo", 0));
+        EXPECT(q.locations().empty(), "where() should not backtrack over terminal");
+        return true;
+    }
+
+    bool query_filter_preserves_order()
+    {
+        auto ctx = load(R"(
+            top:
+                # name  value:int
+                  foo   1
+                  foo   2
+                  bar   1
+                  qux   2
+                  qux   1
+        )");
+
+        auto q = query(ctx.document, "top.#0")
+            .rows()
+            .where(eq("value", 2));
+
+        auto locs = q.locations();
+
+        EXPECT(locs.size() == 2, "Should be two matches");
+
+        auto &s1 = locs[0].addr.steps.back().step;
+        EXPECT(std::holds_alternative<reflect::row_step>(s1), "Location should be a row");
+        auto r1 = std::get<reflect::row_step>(s1);
+
+        auto &s2 = locs[1].addr.steps.back().step;
+        EXPECT(std::holds_alternative<reflect::row_step>(s2), "Location should be a row");
+        auto r2 = std::get<reflect::row_step>(s2);
+
+        auto const dr1 = ctx.document.row(r1.id);
+        EXPECT(dr1.has_value() && dr1->index() == 1, "Index should be 1");
+
+        auto const dr2 = ctx.document.row(r2.id);
+        EXPECT(dr2.has_value() && dr2->index() == 3, "Index should be 3");
+        
+        return true;
+    }
+
+    bool test_row_index(document const & doc, value_location const &loc, size_t idx)
+    {
+        auto &step = loc.addr.steps.back().step;
+        EXPECT(std::holds_alternative<reflect::row_step>(step), "Location should be a row");            
+        auto row = std::get<reflect::row_step>(step);
+
+        auto const doc_row = doc.row(row.id);
+        EXPECT(doc_row.has_value() && doc_row->index() == idx, "Wrong index, order not preserved");
+
+        return true;
+    };
+
+    bool query_multiple_narrowing_preserves_order()
+    {
+        auto ctx = load(R"(
+            top:
+                # name  value:int
+                  _0    0
+                  _1    9
+                  _2    1
+                  _3    8
+                  _4    2
+                  _5    7
+                  _6    3
+                  _7    6
+                  _8    4
+                  _9    5
+        )");
+
+        auto q = query(ctx.document, "top.#0")
+            .rows()
+            .where(gt("value", 0))
+            .where(lt("value", 4));
+
+        auto locs = q.locations();
+
+        EXPECT(locs.size() == 3, "Should be three matches");
+
+        if (!test_row_index(ctx.document, locs[0], 2)) return false;        
+        if (!test_row_index(ctx.document, locs[1], 4)) return false;
+        if (!test_row_index(ctx.document, locs[2], 6)) return false;
+
+        return true;
+    }
+
+    bool query_hash_n_out_of_range()
+    {
+        auto ctx = make_basic_document();
+        auto q = query(ctx.document, "root.tables.#10");
+        EXPECT(q.locations().empty(), "There shouldn't more than one table");
+        return true;
+    }
+
+    bool query_hash_selects_all_tables()
+    {
+        auto ctx = script_country_table();
+        auto q = query(ctx.document, "world.#");
+        auto locs = q.locations();
+        EXPECT(locs.size() == 2, "Two tables should be found");
+        return true;
+    }
+
+    bool query_hash_then_row_selection()
+    {
+        auto ctx = script_country_table();
+
+        auto q = query(ctx.document, "world.#")
+            .rows()
+            .where(eq("foo", "two"));
+
+        auto locs = q.locations();
+
+        EXPECT(locs.size() == 1, "");
+        test_row_index(ctx.document, locs[0], 1);
+
+        return true;
+    }
+
+
     void run_query_tests()
     {
         SUBCAT("Foundations");
@@ -605,6 +780,8 @@ namespace arf::tests
         RUN_TEST(extract_single_value);
         RUN_TEST(extract_single_value_through_helpers);
         RUN_TEST(index_follows_array);
+        SUBCAT("Empty-set stability");
+        RUN_TEST(query_empty_set_stability);
         SUBCAT("Extract plural data");
         RUN_TEST(query_plural_results);
         RUN_TEST(query_reports_ambiguity);
@@ -633,6 +810,18 @@ namespace arf::tests
         SUBCAT("Row access by identifier");
         RUN_TEST(query_table_row_by_string_id);
         RUN_TEST(projected_subset);
+        SUBCAT("Structural mismatch collapse");
+        RUN_TEST(query_structural_mismatch_scalar_to_plural);
+        RUN_TEST(query_structural_mismatch_table_on_non_table);
+        RUN_TEST(query_predicate_on_incompatible_value_kind);
+        SUBCAT("Ordering guarantees");
+        RUN_TEST(query_predicate_on_incompatible_value_kind);
+        RUN_TEST(query_filter_preserves_order);
+        RUN_TEST(query_multiple_narrowing_preserves_order);
+        SUBCAT("Table selector semantics");
+        RUN_TEST(query_hash_n_out_of_range);
+        RUN_TEST(query_hash_selects_all_tables);
+        RUN_TEST(query_hash_then_row_selection);
     }
 }
 

@@ -243,6 +243,8 @@ namespace arf
         const table_node* node;
 
         table_id id() const noexcept { return node->id; }
+        category_view owner() const noexcept;
+
         std::span<const column_id> columns() const noexcept { return node->columns; }
         std::span<const table_row_id> rows() const noexcept { return node->rows; }
 
@@ -252,9 +254,11 @@ namespace arf
         std::optional<column_view> column( column_id id ) const noexcept;
         std::optional<column_view> column( std::string_view name ) const noexcept;
 
-        category_view owner() const noexcept;
         std::optional<size_t> column_index(std::string_view name) const noexcept;        
         std::optional<size_t> column_index(column_id id) const noexcept;        
+
+        std::optional<size_t> row_index(std::string_view name) const noexcept;        
+        std::optional<size_t> row_index(table_row_id id) const noexcept;        
 
         bool is_locally_valid() const noexcept { return node->semantic == semantic_state::valid; }
         bool is_contaminated() const noexcept { return node->contamination == contamination_state::contaminated; }
@@ -285,8 +289,9 @@ namespace arf
         std::string_view name() const noexcept { return node->_name(); }
         std::span<const typed_value> cells() const noexcept { return node->cells; }
 
-        category_view owner() const noexcept;
         table_view table() const noexcept;
+        category_view owner() const noexcept;
+        size_t index() const noexcept;
 
         bool is_locally_valid() const noexcept { return node->semantic == semantic_state::valid; }
         bool is_contaminated() const noexcept { return node->contamination == contamination_state::contaminated; }
@@ -415,6 +420,28 @@ namespace arf
         return std::nullopt;
     }
 
+    std::optional<size_t> document::table_view::row_index(std::string_view name) const noexcept
+    {
+        size_t i = 0;
+        for (auto const & rid : rows())
+        {
+            auto r = doc->row(rid);
+            if (r.has_value() && r->name() == name) return i;
+            ++i;
+        }
+        return std::nullopt;
+    }
+
+    std::optional<size_t> document::table_view::row_index(table_row_id id) const noexcept
+    {
+        size_t i = 0;
+        for (auto const & rid : rows())
+        {
+            if (rid == id) return i;
+            ++i;
+        }
+        return std::nullopt;
+    }
 
     template<typename T>
     typename std::vector<T>::iterator
@@ -517,6 +544,12 @@ namespace arf
         assert (count < cols.size());
         return count;
     }
+
+    size_t document::table_row_view::index() const noexcept
+    {
+        return *table().row_index(id());
+    }
+
 
     namespace 
     {
