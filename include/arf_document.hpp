@@ -87,6 +87,8 @@ namespace arf
         size_t paragraph_count() const noexcept { return paragraphs_.size(); }
 
         category_id create_category(category_id id, std::string_view name, category_id parent);
+        comment_id create_comment(std::string text);
+        paragraph_id create_paragraph(std::string text);
 
         contamination_state contamination {contamination_state::clean};
 
@@ -214,7 +216,7 @@ namespace arf
         struct comment_node
         {
             comment_id  id;
-            std::string text;   // verbatim, includes "//" and leading whitespace
+            std::string text;   // verbatim, may be multi-line, includes "//" and preserves leading whitespace and line breaks
         };
 
         struct paragraph_node
@@ -396,6 +398,32 @@ namespace arf
             it->children.push_back(id);
 
         return id;
+    }
+
+    inline comment_id document::create_comment(std::string text)
+    {
+        auto cid = comment_id{0};
+
+        for (auto const & c : comments_)
+            if (c.id > cid)
+                cid = comment_id{c.id.val + 1};
+
+        comments_.push_back({.id = cid, .text = text});
+
+        return cid;
+    }
+
+    inline paragraph_id document::create_paragraph(std::string text)
+    {
+        auto pid = paragraph_id{0};
+
+        for (auto const & p : paragraphs_)
+            if (p.id > pid)
+                pid = paragraph_id{p.id.val + 1};
+
+        paragraphs_.push_back({.id = pid, .text = text});
+
+        return pid;
     }
 
     inline std::optional<document::category_view>

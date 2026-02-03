@@ -112,11 +112,17 @@ namespace arf
 
 
         // Helpers
+        template<typename T> void insert_source_item(id<T> id);
+        document::table_node * find_table(table_id tid);
+        document::category_node * find_category(category_id cid);
+
         void handle_category_open(const parse_event& ev);
         void handle_category_close(const parse_event& ev);
         void handle_table_header(const parse_event& ev);
         void handle_table_row(const parse_event& ev);        
         void handle_key(parse_event const& ev);
+        void handle_comment(parse_event const& ev);
+        void handle_paragraph(parse_event const& ev);
 
         void log_err( semantic_error_kind what, std::string_view msg, source_location loc )
         {
@@ -130,7 +136,6 @@ namespace arf
         bool row_is_valid(document::row_node const& r);
         bool table_is_valid(document::table_node const& t, document const& doc);
     };
-
 
 //========================================================================
 // Implementation
@@ -618,6 +623,16 @@ namespace
                     handle_key(ev);
                     break;
 
+                case parse_event_kind::comment:
+                    if (opts_.echo_lines) std::cout << "event: comment\n";
+                    handle_comment(ev);
+                    break;
+
+                case parse_event_kind::paragraph:
+                    if (opts_.echo_lines) std::cout << "event: paragraph\n";
+                    handle_paragraph(ev);
+                    break;
+
                 default:
                     if (opts_.echo_lines) std::cout << "unknown event: skipped = " << ev.text << std::endl;
                     break;
@@ -1023,6 +1038,46 @@ namespace
         {
             cat.contamination = contamination_state::contaminated;
         }
+    }
+
+    document::table_node * materialiser::find_table(table_id tid)
+    {
+        for (auto & t : doc_.tables_)
+            if (t.id == tid)
+                return &t;
+        return nullptr;
+    }
+    document::category_node * materialiser::find_category(category_id cid)
+    {
+        for (auto & c : doc_.categories_)
+            if (c.id == cid)
+                return &c;
+        return nullptr;
+    }
+
+    template<typename T>
+    void materialiser::insert_source_item(id<T> id)
+    {
+        if (active_table_)
+        {
+            if (auto ptr = find_table(*active_table_))
+                ptr->ordered_items.push_back(document::source_item_ref{id});
+        }
+        else
+        {
+            if (auto ptr = find_category(stack_.back()))
+                ptr->ordered_items.push_back(document::source_item_ref{id});
+        }
+    }
+
+    inline void materialiser::handle_comment(const parse_event& ev)
+    {
+        insert_source_item(doc_.create_comment(ev.text));
+    }
+
+    void materialiser::handle_paragraph(const parse_event& ev)
+    {
+        insert_source_item(doc_.create_paragraph(ev.text));
     }
 
     inline bool materialiser::row_is_valid(document::row_node const& r)
