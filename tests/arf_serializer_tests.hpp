@@ -17,17 +17,21 @@ static bool foo()
         "  1  2\n"
         "  3  4\n";
 
-    auto ctx = load(src, {});
+    auto ctx = load(src);
+        
     EXPECT(ctx.errors.empty(), "error emitted");
 
-    std::cout << ctx.document.key_count() << std::endl;
-    std::cout << ctx.document.table_count() << std::endl;
-
     std::ostringstream out;
-    auto s = serializer(out);
-    s.write(ctx.document);
+    auto s = serializer(ctx.document);
+    s.write(out);
 
-    std::cout << out.str() << std::endl;
+    std::cout << "Source:\n";
+    std::cout << "\"" << src << "\"" << std::endl;
+
+    std::cout << "\nOutput:\n";
+    std::cout << "\"" << out.str() << "\"" << std::endl;
+
+    EXPECT(out.str() == src, "Authored source not preserved");
 
     return true;
 }    

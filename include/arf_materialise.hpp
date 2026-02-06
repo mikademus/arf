@@ -23,10 +23,6 @@
 
 #include <iostream>
 
-#define TRACE_IMPL(x) std::cout << std::string(x, '-') << " " << __FUNCTION__ << " line " << __LINE__
-#define TRACE(ind) TRACE_IMPL(ind) << std::endl    
-#define TRACE_MSG(ind, msg) TRACE_IMPL(ind) << ": " << msg << std::endl
-
 namespace arf
 {
     //#define TRACE_CONTAM(where, x) \
