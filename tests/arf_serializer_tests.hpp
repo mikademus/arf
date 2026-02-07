@@ -92,7 +92,7 @@ static bool roundtrip_category_simple()
     std::ostringstream out;
     serializer s(ctx.document);
     s.write(out);
-    
+
     EXPECT(out.str() == src, "simple category not preserved");
     return true;
 }
@@ -159,7 +159,7 @@ static bool roundtrip_table_in_category()
     std::ostringstream out;
     serializer s(ctx.document);
     s.write(out);
-    
+        
     EXPECT(out.str() == src, "table in category not preserved");
     return true;
 }
@@ -234,7 +234,7 @@ static bool roundtrip_complex_document()
     std::ostringstream out;
     serializer s(ctx.document);
     s.write(out);
-    
+        
     EXPECT(out.str() == src, "complex document not preserved");
     return true;
 }
@@ -300,6 +300,10 @@ static bool edited_row_reconstructed()
     serializer s(ctx.document);
     s.write(out);
     
+    std::cout << "=== SOURCE ===\n" << src << "\n";
+    std::cout << "=== OUTPUT ===\n" << out.str() << "\n";
+    std::cout << "=== END ===\n";
+        
     std::string expected = 
         "# a  b\n"
         "    99  2\n";  // Emits "99" because variant holds int64_t
@@ -325,6 +329,10 @@ static bool edited_typed_row_respects_declaration()
     serializer s(ctx.document);
     s.write(out);
     
+    std::cout << "=== SOURCE ===\n" << src << "\n";
+    std::cout << "=== OUTPUT ===\n" << out.str() << "\n";
+    std::cout << "=== END ===\n";
+        
     // Column is :int, so must emit as integer
     std::string expected = 
         "# name:str  hp:int\n"
@@ -443,7 +451,7 @@ static bool option_force_explicit_types()
     std::ostringstream out;
     serializer s(ctx.document, opts);
     s.write(out);
-    
+        
     EXPECT(out.str() == "x:int = 42\n", "force_explicit types failed");
     return true;
 }
@@ -460,7 +468,7 @@ static bool option_force_tacit_types()
     std::ostringstream out;
     serializer s(ctx.document, opts);
     s.write(out);
-    
+            
     EXPECT(out.str() == "x = 42\n", "force_tacit types failed");
     return true;
 }
@@ -501,6 +509,10 @@ static bool option_compact_blank_lines()
     serializer s(ctx.document, opts);
     s.write(out);
     
+    std::cout << "=== SOURCE ===\n" << src << "\n";
+    std::cout << "=== OUTPUT ===\n" << out.str() << "\n";
+    std::cout << "=== END ===\n";
+        
     std::string expected = "a = 1\nb = 2\n";
     EXPECT(out.str() == expected, "compact blank lines failed");
     return true;

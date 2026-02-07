@@ -10,9 +10,12 @@
 #include <assert.h>
 #include <cstdlib>
 #include <sstream>
+#include <iostream>
 
 namespace arf 
 {
+    #define DBG_EMIT std::cout << "[P] "
+
 //========================================================================
 // Structure and parsing
 //========================================================================
@@ -100,8 +103,13 @@ namespace arf
 
     using parse_context = context<cst_document, parse_error_kind>;
 
-    parse_context parse(const std::string& input);
-    parse_context parse(const std::string_view input);    
+    struct parser_options
+    {
+        bool echo_lines {false};
+    };
+
+    parse_context parse(const std::string& input, parser_options = {});
+    parse_context parse(const std::string_view input, parser_options = {});
     
 //========================================================================
 // Implementation details
@@ -114,6 +122,7 @@ namespace arf
         struct parser_impl
         {
             parse_context ctx;
+            parser_options opt;
 
             // Columns are stored per-table so a global counter is needed
             column_id next_column_id {0};
@@ -130,7 +139,7 @@ namespace arf
             void flush_pending_paragraph();
             void flush_all_pending();
 
-            void parse(std::string_view input);
+            void parse(std::string_view input, parser_options opt = {});
             void add_error(const std::string& message);
 
             std::vector<std::string> split_lines(const std::string& input);
@@ -152,8 +161,9 @@ namespace arf
 
 //---------------------------------------------------------------------------        
 
-        void parser_impl::parse(std::string_view input)
+        void parser_impl::parse(std::string_view input, parser_options opt)
         {
+            this->opt = opt;
             size_t line_no = 0;
             create_root_category();
             
@@ -170,7 +180,10 @@ namespace arf
                 // Trim \r for Windows line endings
                 if (!line.empty() && line.back() == '\r')
                     line.remove_suffix(1);
-                
+
+                if (opt.echo_lines)
+                    DBG_EMIT << "Extracted: " << line << std::endl;
+                    
                 parse_line(line, ++line_no);
                 
                 // If no more newlines, we're done
@@ -238,6 +251,10 @@ namespace arf
                     if (spaces >= 2 && !current.empty()) 
                     {
                         cells.push_back(std::string(trim_sv(current)));
+
+                        if (opt.echo_lines)
+                            DBG_EMIT << "  - Split out item \"" << cells.back() << "\"" << std::endl;
+                        
                         current.clear();
                         spaces = 0;
                     }
@@ -283,6 +300,9 @@ namespace arf
                     blob += '\n';
             }
             ev.text = std::move(blob);
+
+            if (opt.echo_lines)
+                DBG_EMIT << "Adding comment \"" << ev.text << "\" as event #" << ctx.document.events.size() << std::endl;
             
             ctx.document.events.push_back(ev);
             pending_comment_lines.clear();
@@ -310,6 +330,9 @@ namespace arf
 
             ev.text = std::move(blob);
             
+            if (opt.echo_lines)
+                DBG_EMIT << "Adding paragraph \"" << ev.text << "\" as event #" << ctx.document.events.size() << std::endl;
+
             ctx.document.events.push_back(ev);
             pending_paragraph_lines.clear();
         }
@@ -328,10 +351,17 @@ namespace arf
     {
         std::string_view trimmed = trim_sv(line);
 
+        if (opt.echo_lines)
+            DBG_EMIT << "Trimmed: " << trimmed << std::endl;
+            
         // Empty lines become paragraphs
         if (trimmed.empty())
         {
             flush_pending_comment();
+        
+            if (opt.echo_lines)
+                DBG_EMIT << "Pushing empty line to paragraph queue" << std::endl;
+                
             pending_paragraph_lines.push_back(std::string(line));
             return;
         }
@@ -340,6 +370,10 @@ namespace arf
         if (trimmed.starts_with("//"))
         {
             flush_pending_paragraph();
+        
+            if (opt.echo_lines)
+                DBG_EMIT << "Pushing comment to queue" << std::endl;
+
             pending_comment_lines.push_back(std::string(line));
             return;
         }
@@ -388,6 +422,8 @@ namespace arf
             if (!key_value(ev))
             {
                 // Malformed key - treat as paragraph
+                if (opt.echo_lines)
+                    DBG_EMIT << "Pushing malformed key to paragraph queue" << std::endl;
                 pending_paragraph_lines.push_back(std::string(line));
             }
             return;
@@ -400,6 +436,8 @@ namespace arf
             if (!table_row(trimmed, ev))
             {
                 // Not a valid row - treat as paragraph
+                if (opt.echo_lines)
+                    DBG_EMIT << "Pushing malformed row to paragraph queue" << std::endl;
                 pending_paragraph_lines.push_back(std::string(line));
             }
             return;
@@ -407,6 +445,8 @@ namespace arf
 
         // Otherwise: paragraph (non-grammar text)
         flush_pending_comment();
+        if (opt.echo_lines)
+            DBG_EMIT << "Pushing paragraph to queue" << std::endl;
         pending_paragraph_lines.push_back(std::string(line));
     }
 
@@ -423,7 +463,7 @@ namespace arf
 //---------------------------------------------------------------------------        
 
         void parser_impl::open_category(std::string_view name, parse_event& ev)
-        {
+        {        
             category cat;
             cat.id     = ctx.document.categories.size();
             cat.name   = to_lower(std::string(trim_sv(name)));
@@ -434,6 +474,9 @@ namespace arf
 
             ev.kind   = parse_event_kind::category_open;
             ev.target = cat.id;
+
+            if (opt.echo_lines)
+                DBG_EMIT << "Adding create subcategory " << cat.name << " as event #" << ctx.document.events.size() << std::endl;
 
             ctx.document.events.push_back(ev);
         }
@@ -447,9 +490,13 @@ namespace arf
             if (category_stack.size() <= 1)
             {
                 // malformed close: preserve authored intent as comment
-                // instead of discarding.Do NOT blob with any previous
+                // instead of discarding. Do NOT blob with any previous
                 // comment; keep separate.
                 flush_all_pending();
+
+                if (opt.echo_lines)
+                    DBG_EMIT << "Converting illegal category close to comment: " << name << std::endl;
+
                 pending_comment_lines.push_back(std::string("// ") + std::string(ev.text));
                 return;
             }            
@@ -457,10 +504,16 @@ namespace arf
             // Named close: preserve the name as written
             if (!name.empty())
             {
+                if (opt.echo_lines)
+                    DBG_EMIT << "Close named category " << name << std::endl;
+
                 ev.target = unresolved_name{name};
                 ctx.document.events.push_back(ev);
                 return;
             }
+
+            if (opt.echo_lines)
+                DBG_EMIT << "Close current subcategory " << std::endl;
 
             category_id closing = category_stack.back();
             category_stack.pop_back();
@@ -468,6 +521,10 @@ namespace arf
             active_table = invalid_id<table_tag>();
 
             ev.target = closing;
+
+            if (opt.echo_lines)
+                DBG_EMIT << "Adding close subcategory \"" << ev.text << "\" as event #" << ctx.document.events.size() << std::endl;
+
             ctx.document.events.push_back(ev);
         }
 
@@ -476,6 +533,9 @@ namespace arf
 
         void parser_impl::start_table(std::string_view header, parse_event& ev)
         {
+            if (opt.echo_lines)
+                DBG_EMIT << "Starting table" << std::endl;
+
             table tbl;
             tbl.id              = ctx.document.tables.size();
             tbl.owning_category = category_stack.back();
@@ -492,21 +552,37 @@ namespace arf
                     col.type = value_type::unresolved;
                     col.type_source = type_ascription::declared;
                     col.declared_type = std::string(trim_sv(c.substr(pos + 1)));
+
+                    if (opt.echo_lines)
+                        DBG_EMIT << "Extracted column " << col.name << " of type " << *col.declared_type << std::endl;
                 }
                 else
                 {
                     col.name = to_lower(c);
                     col.type = value_type::unresolved;
                     col.type_source = type_ascription::tacit;
+
+                    if (opt.echo_lines)
+                        DBG_EMIT << "Extracted untyped column " << col.name << std::endl;
                 }
+
+                if (opt.echo_lines)
+                    DBG_EMIT << "Adding column " << col.name << std::endl;
+
                 tbl.columns.push_back(col);
             }
+
+            if (opt.echo_lines)
+                DBG_EMIT << "Adding table with ID " << tbl.id << std::endl;
 
             ctx.document.tables.push_back(tbl);
             active_table = tbl.id;
 
             ev.kind   = parse_event_kind::table_header;
             ev.target = tbl.id;
+
+            if (opt.echo_lines)
+                DBG_EMIT << "Adding table " << tbl.id << " as event #" << ctx.document.events.size() << std::endl;
 
             ctx.document.events.push_back(ev);
         }
@@ -515,6 +591,9 @@ namespace arf
 
         bool parser_impl::table_row(std::string_view text, parse_event& ev)
         {
+            if (opt.echo_lines)
+                DBG_EMIT << "Starting row \"" << text << "\"" << std::endl;
+
             auto cells = split_table_cells(text);
 
             if (cells.empty())
@@ -538,6 +617,9 @@ namespace arf
                         ? std::string(cells[i])
                         : std::string{};
 
+                if (opt.echo_lines)
+                    DBG_EMIT << "  - Adding cell " << tv.value_to_string() << " of type " << detail::type_to_string(tv.type) << std::endl;
+
                 row.cells.push_back(tv);
             }
 
@@ -547,6 +629,9 @@ namespace arf
             ev.kind   = parse_event_kind::table_row;
             ev.target = row.id;
 
+            if (opt.echo_lines)
+                DBG_EMIT << "Adding row with ID " << row.id << " as event #" << ctx.document.events.size() << std::endl;
+
             ctx.document.events.push_back(ev);
             return true;
         }
@@ -555,11 +640,17 @@ namespace arf
 
         bool parser_impl::key_value(parse_event& ev)
         {
+            if (opt.echo_lines)
+                DBG_EMIT << "Parsing key \"" << ev.text << "\"" << std::endl;
+
             active_table = invalid_id<table_tag>();
 
             auto pos = ev.text.find('=');
             if (pos == std::string::npos)
             {
+                if (opt.echo_lines)
+                    DBG_EMIT << "  - Key malformed" << std::endl;
+
                 return false;  // Malformed
             }
 
@@ -574,10 +665,16 @@ namespace arf
             {
                 name = to_lower(lhs.substr(0, type_pos));
                 declared = std::string(trim_sv(lhs.substr(type_pos + 1)));
+
+                if (opt.echo_lines)
+                    DBG_EMIT << "  - Key named \"" << name << "\" of type " << *declared << std::endl;
             }
             else
             {
                 name = to_lower(lhs);
+
+                if (opt.echo_lines)
+                    DBG_EMIT << "  - Untyped key named \"" << name << "\"" << std::endl;
             }
 
             cst_key key;
@@ -588,10 +685,14 @@ namespace arf
             key.loc           = ev.loc;
 
             key_id id{ ctx.document.keys.size() };
+
             ctx.document.keys.push_back(std::move(key));
 
             ev.kind   = parse_event_kind::key_value;
             ev.target = id;
+
+            if (opt.echo_lines)
+                DBG_EMIT << "Adding key \"" << key.name << "\" with ID " << id << " as event #" << ctx.document.events.size() << std::endl;
 
             ctx.document.events.push_back(ev);
             return true;
@@ -604,20 +705,21 @@ namespace arf
 // Parser API implementation
 //========================================================================
 
-    parse_context parse(const std::string& input)
+    parse_context parse(const std::string& input, parser_options opt)
     {
         parser_impl p;
-        p.parse(input);
+        p.parse(input, opt);
         return std::move(p.ctx);
     }
     
-    parse_context parse(const std::string_view input)
+    parse_context parse(const std::string_view input, parser_options opt)
     {
         parser_impl p;
-        p.parse(input);
+        p.parse(input, opt);
         return std::move(p.ctx);
     }
         
+#undef DBG_EMIT    
 
 } // namespace arf
 

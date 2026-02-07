@@ -63,15 +63,15 @@ namespace arf
     inline semantic_error_kind get_material_error(any_error const & e) { return std::get<error<semantic_error_kind>>(e).kind; }
 
 
-    inline doc_context load( std::string_view src, materialiser_options opt )
+    inline doc_context load( std::string_view src, parser_options popt, materialiser_options mopt )
     {
         doc_context out{};
 
-        auto parse_ctx = parse(src);
+        auto parse_ctx = parse(src, popt);
         material_context mat_ctx = 
-            opt.own_parser_data
-                ? materialise(std::move(parse_ctx), opt)
-                :  materialise(parse_ctx, opt);
+            mopt.own_parser_data
+                ? materialise(std::move(parse_ctx), mopt)
+                :  materialise(parse_ctx, mopt);
         out.document = std::move(mat_ctx.document);
 
         out.errors.reserve(parse_ctx.errors.size() + mat_ctx.errors.size());
@@ -92,6 +92,17 @@ namespace arf
 
         return out;
     }
+
+    inline doc_context load( std::string_view src, parser_options opt )
+    {
+        return load( src, opt, {} );
+    }
+
+    inline doc_context load( std::string_view src, materialiser_options opt )
+    {
+        return load( src, {}, opt );
+    }
+
 
 }
 

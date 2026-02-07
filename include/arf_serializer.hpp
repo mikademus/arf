@@ -13,6 +13,8 @@
 namespace arf
 {
 
+    #define DBG_EMIT std::cout << "[S] "
+
 //========================================================================
 // SERIALIZER_OPTIONS
 //========================================================================
@@ -54,10 +56,7 @@ namespace arf
         void write(std::ostream& out)
         {
             out_ = &out;
-
-            // Walk root's ordered_items
-            for (const auto& item : doc_.categories_.front().ordered_items)
-                write_source_item(item);
+            write_category_open(doc_.categories_.front());            
         }
 
     private:
@@ -74,7 +73,7 @@ namespace arf
         void write_source_item(const document::source_item_ref& ref)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_source_item\n";
+                DBG_EMIT << "serializer::write_source_item\n";
             
             std::visit([&](auto&& id) { write_item(id); }, ref.id);
         }
@@ -86,7 +85,7 @@ namespace arf
         void write_item(key_id id)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_item(keyid)\n";
+                DBG_EMIT << "serializer::write_item(keyid)\n";
 
             auto it = doc_.find_node_by_id(doc_.keys_, id);
             assert(it != doc_.keys_.end());
@@ -96,7 +95,7 @@ namespace arf
         void write_item(category_id id)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_item(category_id)\n";
+                DBG_EMIT << "serializer::write_item(category_id)\n";
 
             auto it = doc_.find_node_by_id(doc_.categories_, id);
             assert(it != doc_.categories_.end());
@@ -106,7 +105,7 @@ namespace arf
         void write_item(const document::category_close_marker& marker)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_item(category_close_id)\n";
+                DBG_EMIT << "serializer::write_item(category_close_id)\n";
 
             write_category_close(marker);
         }
@@ -114,7 +113,7 @@ namespace arf
         void write_item(table_id id)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_item(table_id)\n";
+                DBG_EMIT << "serializer::write_item(table_id)\n";
 
             auto it = doc_.find_node_by_id(doc_.tables_, id);
             assert(it != doc_.tables_.end());
@@ -124,7 +123,7 @@ namespace arf
         void write_item(table_row_id id)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_item(table_row_id)\n";
+                DBG_EMIT << "serializer::write_item(table_row_id)\n";
 
             auto it = doc_.find_node_by_id(doc_.rows_, id);
             assert(it != doc_.rows_.end());
@@ -134,14 +133,19 @@ namespace arf
         void write_item(comment_id id)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_item(comment_id)\n";
+                DBG_EMIT << "serializer::write_item(comment_id{" << id.val << "})\n";
 
             if (!opts_.emit_comments)
                 return;
 
             auto it = std::ranges::find_if(doc_.comments_,
                 [id](auto const& c) { return c.id == id; });
-            assert(it != doc_.comments_.end());
+            
+            if (it == doc_.comments_.end())
+            {
+                DBG_EMIT << "ERROR: comment_id{" << id.val << "} not found!\n";
+                return;
+            }
 
             write_comment(*it);
         }
@@ -149,7 +153,7 @@ namespace arf
         void write_item(paragraph_id id)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_item(paragraph_id)\n";
+                DBG_EMIT << "serializer::write_item(paragraph_id)\n";
 
             if (!opts_.emit_paragraphs)
                 return;
@@ -168,10 +172,13 @@ namespace arf
         void write_key(const document::key_node& k)
         {                
             if (opts_.echo_lines)
-                std::cout << "serializer::write_key\n";
+                DBG_EMIT << "serializer::write_key\n";
+
+            bool force_reconstruct = 
+                (opts_.types != serializer_options::type_policy::preserve);
 
             // Authored key with source available - emit original
-            if (!k.is_edited && k.source_event_index && doc_.source_context_)
+            if (!force_reconstruct && !k.is_edited && k.source_event_index && doc_.source_context_)
             {
                 const auto& event = doc_.source_context_->document.events[*k.source_event_index];
                 *out_ << event.text << '\n';
@@ -200,7 +207,7 @@ namespace arf
         void write_category_open(const document::category_node& cat)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_category_open\n";
+                DBG_EMIT << "serializer::write_category_open\n";
 
             bool is_root = (cat.id == category_id{0});
 
@@ -243,7 +250,7 @@ namespace arf
         void write_category_contents(const document::category_node& cat)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_category_contents\n";
+                DBG_EMIT << "serializer::write_category_contents\n";
 
             for (const auto& item : cat.ordered_items)
             {
@@ -258,7 +265,7 @@ namespace arf
         void write_category_close(const document::category_close_marker& marker)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_category_close\n";
+                DBG_EMIT << "serializer::write_category_close\n";
 
             --indent_;
 
@@ -294,7 +301,7 @@ namespace arf
         void write_table(const document::table_node& tbl)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_table\n";
+                DBG_EMIT << "serializer::write_table\n";
 
             // Authored table with source - emit original header
             if (!tbl.is_edited && tbl.source_event_index && doc_.source_context_)
@@ -344,7 +351,7 @@ namespace arf
         void write_row(const document::row_node& row)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_row\n";
+                DBG_EMIT << "serializer::write_row\n";
 
             // Authored row with source - emit original
             if (!row.is_edited && row.source_event_index && doc_.source_context_)
@@ -382,7 +389,7 @@ namespace arf
         void write_comment(const document::comment_node& c)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_comment\n";
+                DBG_EMIT << "serializer::write_comment\n";
 
             // Comments are always emitted verbatim from stored text
             // (They don't have edit tracking - if you change a comment, you change its .text)
@@ -396,7 +403,7 @@ namespace arf
         void write_paragraph(const document::paragraph_node& p)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_paragraph\n";
+                DBG_EMIT << "serializer::write_paragraph\n";
 
             if (opts_.blank_lines == serializer_options::blank_line_policy::compact
                 && p.text.empty())
@@ -520,7 +527,7 @@ namespace arf
             }
             
             if (opts_.echo_lines)
-                std::cout << "serializer::write_value_semantic\n";
+                DBG_EMIT << "serializer::write_value_semantic\n";
 
             // TACIT type OR already matching - emit actual variant contents
             std::visit([this](auto&& value)
@@ -563,7 +570,7 @@ namespace arf
         void write_converted_to_type(const value& v, value_type target)
         {
             if (opts_.echo_lines)
-                std::cout << "serializer::write_converted_to_type\n";
+                DBG_EMIT << "serializer::write_converted_to_type\n";
 
             switch (target)
             {
@@ -641,6 +648,8 @@ namespace arf
                 *out_ << "    ";  // 4 spaces per level
         }
     };
+
+    #undef DBG_EMIT
 
 } // namespace arf
 

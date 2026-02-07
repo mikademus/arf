@@ -25,8 +25,10 @@
 
 namespace arf
 {
+    #define DBG_EMIT std::cout << "[M] "
+
     //#define TRACE_CONTAM(where, x) \
-    //    std::cout << where << ": semantic=" << int(x.semantic) \
+    //    DBG_EMIT << where << ": semantic=" << int(x.semantic) \
     //            << " contam=" << int(x.contamination) << "\n";
                     
     struct materialiser_options
@@ -129,7 +131,7 @@ namespace arf
         {
             out_.errors.push_back({ what, loc, std::string(msg) });
             if (opts_.echo_errors)
-                std::cout << "Error #" << std::to_string(static_cast<int>(what)) 
+                DBG_EMIT << "Error #" << std::to_string(static_cast<int>(what)) 
                         << ": " << semantic_error_string[static_cast<size_t>(what)] 
                         << ". Message: " << msg << "\n";
         }
@@ -599,42 +601,42 @@ namespace
             switch (ev.kind)
             {
                 case parse_event_kind::category_open:
-                    if (opts_.echo_lines) std::cout << "event: category_open = " << ev.text << std::endl;
+                    if (opts_.echo_lines) DBG_EMIT << "event " << i << ": category_open = " << ev.text << "\"" << std::endl;
                     handle_category_open(ev, i);
                     break;
 
                 case parse_event_kind::category_close:
-                    if (opts_.echo_lines) std::cout << "event: category_close = " << ev.text << std::endl;
+                    if (opts_.echo_lines) DBG_EMIT << "event " << i << ": category_close = " << ev.text << "\"" << std::endl;
                     handle_category_close(ev, i);
                     break;
 
                 case parse_event_kind::table_header:
-                    if (opts_.echo_lines) std::cout << "event: table_header = " << ev.text << std::endl;
+                    if (opts_.echo_lines) DBG_EMIT << "event " << i << ": table_header = " << ev.text << "\"" << std::endl;
                     handle_table_header(ev, i);
                     break;
 
                 case parse_event_kind::table_row:
-                    if (opts_.echo_lines) std::cout << "event: table_row = " << ev.text << std::endl;
+                    if (opts_.echo_lines) DBG_EMIT << "event " << i << ": table_row = " << ev.text << "\"" << std::endl;
                     handle_table_row(ev, i);
                     break;
 
                 case parse_event_kind::key_value:
-                    if (opts_.echo_lines) std::cout << "event: key_value = " << ev.text << std::endl;
+                    if (opts_.echo_lines) DBG_EMIT << "event " << i << ": key_value = " << ev.text << "\"" << std::endl;
                     handle_key(ev, i);
                     break;
 
                 case parse_event_kind::comment:
-                    if (opts_.echo_lines) std::cout << "event: comment\n";
+                    if (opts_.echo_lines) DBG_EMIT << "event " << i << ": comment \"" << ev.text << "\"" << std::endl;
                     handle_comment(ev, i);
                     break;
 
                 case parse_event_kind::paragraph:
-                    if (opts_.echo_lines) std::cout << "event: paragraph\n";
+                    if (opts_.echo_lines) DBG_EMIT << "event " << i << ": paragraph \"" << ev.text << "\"" << std::endl;
                     handle_paragraph(ev, i);
                     break;
 
                 default:
-                    if (opts_.echo_lines) std::cout << "unknown event: skipped = " << ev.text << std::endl;
+                    if (opts_.echo_lines) DBG_EMIT << "event " << i << " unknown, skipped = " << ev.text << "\"" << std::endl;
                     break;
             }
         }
@@ -704,7 +706,7 @@ namespace
         category_id parent  = stack_.back();
 
         category_id doc_id = doc_.create_category(cid, cst_cat.name, parent);
-        if (opts_.echo_lines) std::cout << "created category id: " << cid.val << ", name: " << cst_cat.name << std::endl;
+        if (opts_.echo_lines) DBG_EMIT << "created category id: " << cid.val << ", name: " << cst_cat.name << std::endl;
 
         auto it = std::ranges::find_if(doc_.categories_, [doc_id](document::category_node const &cat){return cat.id.val == doc_id.val;});
         assert (it != doc_.categories_.end());
@@ -713,8 +715,8 @@ namespace
         doc_.categories_.back().semantic = semantic_state::valid;
 
         cst_to_doc_category_[cid.val] = doc_id;
-        stack_.push_back(doc_id);
         insert_source_item(doc_id);
+        stack_.push_back(doc_id);
     }
 
     inline void materialiser::handle_category_close(const parse_event& ev, size_t parse_idx)
@@ -1108,7 +1110,12 @@ namespace
 
     inline void materialiser::handle_comment(const parse_event& ev, size_t parse_idx)
     {
-        insert_source_item(doc_.create_comment(ev.text));
+        auto cid = doc_.create_comment(ev.text);
+        
+        if (opts_.echo_lines)
+            DBG_EMIT << "Created comment_id{" << cid.val << "} with text: \"" << ev.text << "\"\n";
+                
+        insert_source_item(cid);
         doc_.comments_.back().source_event_index = parse_idx;
     }
 
@@ -1162,6 +1169,9 @@ namespace
         materialiser m(std::move(ctx), opts);
         return m.run();
     }
+
+#undef DBG_EMIT    
+
 }
 
 #endif

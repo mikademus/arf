@@ -453,27 +453,15 @@ namespace arf
 
     inline comment_id document::create_comment(std::string text)
     {
-        auto cid = comment_id{0};
-
-        for (auto const & c : comments_)
-            if (c.id > cid)
-                cid = comment_id{c.id.val + 1};
-
+        comment_id cid{comments_.size()};
         comments_.push_back({.id = cid, .text = text});
-
         return cid;
     }
 
     inline paragraph_id document::create_paragraph(std::string text)
     {
-        auto pid = paragraph_id{0};
-
-        for (auto const & p : paragraphs_)
-            if (p.id > pid)
-                pid = paragraph_id{p.id.val + 1};
-
+        paragraph_id pid{paragraphs_.size()};
         paragraphs_.push_back({.id = pid, .text = text});
-
         return pid;
     }
 
