@@ -300,13 +300,9 @@ static bool edited_row_reconstructed()
     serializer s(ctx.document);
     s.write(out);
     
-    std::cout << "=== SOURCE ===\n" << src << "\n";
-    std::cout << "=== OUTPUT ===\n" << out.str() << "\n";
-    std::cout << "=== END ===\n";
-        
     std::string expected = 
         "# a  b\n"
-        "    99  2\n";  // Emits "99" because variant holds int64_t
+        "  99  2\n";  // Emits "99" because variant holds int64_t
     
     EXPECT(out.str() == expected, "edited row not reconstructed");
     return true;
@@ -328,15 +324,11 @@ static bool edited_typed_row_respects_declaration()
     std::ostringstream out;
     serializer s(ctx.document);
     s.write(out);
-    
-    std::cout << "=== SOURCE ===\n" << src << "\n";
-    std::cout << "=== OUTPUT ===\n" << out.str() << "\n";
-    std::cout << "=== END ===\n";
-        
+            
     // Column is :int, so must emit as integer
     std::string expected = 
         "# name:str  hp:int\n"
-        "    alice  99\n";  // "99" converted from string to int
+        "  alice  99\n";  // "99" converted from string to int
     
     EXPECT(out.str() == expected, "declared type not respected");
     return true;
