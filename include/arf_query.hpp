@@ -899,7 +899,7 @@ namespace arf
             if (!parent.value_ptr)
                 return out;
 
-            if (!is_array(parent.value_ptr->type))
+            if (!is_array(*parent.value_ptr))
                 return out;
 
             // Extract index from [n] syntax
@@ -1812,7 +1812,7 @@ namespace arf
             if (loc.kind != location_kind::terminal_value || !loc.value_ptr)
                 continue;
 
-            if (!is_array(loc.value_ptr->type))
+            if (!is_array(*loc.value_ptr))
                 continue;
 
             reflect::inspect_context ctx{ doc_ };

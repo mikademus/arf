@@ -406,7 +406,7 @@ namespace arf
                 DBG_EMIT << "serializer::write_paragraph\n";
 
             if (opts_.blank_lines == serializer_options::blank_line_policy::compact
-                && p.text.empty())
+                && trim_sv(p.text).empty())
             {
                 return;  // Skip empty paragraphs in compact mode
             }

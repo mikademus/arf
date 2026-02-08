@@ -24,6 +24,38 @@ namespace arf
 
     class document
     {
+        //------------------------------------------------------------------------
+        // Node base class
+        //------------------------------------------------------------------------
+
+        struct empty_struct {};
+
+        struct _source_event 
+        { 
+            std::optional<size_t> source_event_index; 
+        };
+
+        struct _semantic_state 
+        {
+            semantic_state      semantic      {semantic_state::valid};
+            contamination_state contamination {contamination_state::clean};
+        };
+
+        // Conditional inheritance pattern:
+        // - Nodes can selectively opt-in to source tracking and semantic state
+        // - empty_struct is used for opt-out (zero overhead via EBO)
+        // - category_node opts out of source_event_index (uses open/close instead)
+        // - column_node opts out of semantic_state (uses col.semantic instead)        
+        template<bool has_source_event = true, bool has_semantic_state = true>
+        struct node 
+            : public std::conditional_t<has_source_event, _source_event, empty_struct>
+            , public std::conditional_t<has_semantic_state, _semantic_state, empty_struct>
+        {
+            // Authorship metadata
+            creation_state creation  {creation_state::authored};
+            bool           is_edited {false};
+        };
+
     public:
 
         //------------------------------------------------------------------------
@@ -102,7 +134,7 @@ namespace arf
         comment_id create_comment(std::string text);
         paragraph_id create_paragraph(std::string text);
 
-    // NOTE: Should this be public?
+    // NOTE: Should this really be public?
         contamination_state contamination {contamination_state::clean};
 
     //private:
@@ -138,7 +170,7 @@ namespace arf
             source_id id;
         };
 
-        struct category_node
+        struct category_node : node<false>
         {
             typedef category_id id_type;
             id_type _id() const noexcept { return id; }
@@ -151,16 +183,13 @@ namespace arf
             std::vector<table_id>        tables;
             std::vector<key_id>          keys;
             std::vector<source_item_ref> ordered_items;
-            semantic_state               semantic      {semantic_state::valid};
-            contamination_state          contamination {contamination_state::clean};
 
-            // Authorship metadata
+            // Authorship metadata, instead of source_event_index:
             std::optional<size_t>        source_event_index_open;   // Category open event
             std::optional<size_t>        source_event_index_close;  // Category close event (if explicit)
-            bool                         is_edited {false};
         };
 
-        struct table_node
+        struct table_node : node<>
         {
             typedef table_id id_type;
             id_type _id() const noexcept { return id; }
@@ -171,15 +200,9 @@ namespace arf
             std::vector<column_id>       columns;
             std::vector<table_row_id>    rows;          // semantic collection (all rows)
             std::vector<source_item_ref> ordered_items; // authored order (rows + comments + paragraphs + subcategories)
-            semantic_state               semantic      {semantic_state::valid};
-            contamination_state          contamination {contamination_state::clean};
-    
-            // Authorship metadata
-            std::optional<size_t>        source_event_index;  // Points to table_header event (shared by all columns in table)
-            bool                         is_edited {false};
         };
 
-        struct column_node
+        struct column_node : node<true, false>
         {
             typedef column_id id_type;
             id_type _id() const noexcept { return col.id; }
@@ -188,13 +211,9 @@ namespace arf
             struct column   col;
             table_id        table;
             category_id     owner;
-    
-            // Authorship metadata
-            std::optional<size_t> source_event_index;  // Points to table_header event (shared by all columns in table)
-            bool                  is_edited {false};
         };
 
-        struct row_node
+        struct row_node : node<>
         {
             typedef table_row_id id_type;
             id_type _id() const noexcept { return id; }
@@ -209,15 +228,9 @@ namespace arf
             table_id                 table;
             category_id              owner;
             std::vector<typed_value> cells;
-            semantic_state           semantic      {semantic_state::valid};
-            contamination_state      contamination {contamination_state::clean};
-            
-            // Authorship metadata
-            std::optional<size_t>    source_event_index;   // Points to table row event
-            bool                     is_edited {false};
         };
 
-        struct key_node
+        struct key_node : node<>
         {
             typedef key_id id_type;
             id_type _id() const noexcept { return id; }
@@ -229,32 +242,18 @@ namespace arf
             value_type           type;
             type_ascription      type_source;
             typed_value          value;
-            semantic_state       semantic      {semantic_state::valid};
-            contamination_state  contamination {contamination_state::clean};
-            
-            // Authorship metadata
-            std::optional<size_t> source_event_index;   // Index into parse_context.events
-            bool                  is_edited {false};    // Modified after materialization
         };
 
-        struct comment_node
+        struct comment_node : node<>
         {
             comment_id  id;
             std::string text;   // verbatim, may be multi-line, includes "//" and preserves leading whitespace and line breaks
-            
-            // Authorship metadata
-            std::optional<size_t> source_event_index;   // Index into parse_context.events
-            bool                  is_edited {false};    // Modified after materialization
         };
 
-        struct paragraph_node
+        struct paragraph_node : node<>
         {
             paragraph_id id;
             std::string  text;  // verbatim, may be multi-line, preserves leading whitespace and line breaks
-            
-            // Authorship metadata
-            std::optional<size_t> source_event_index;   // Index into parse_context.events
-            bool                  is_edited {false};    // Modified after materialization
         };        
 
     private:

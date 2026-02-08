@@ -127,6 +127,12 @@ namespace arf
         table_cell  // declared inside a table row
     };
 
+    enum class creation_state
+    {
+        authored,   // defined in an authored source (created from parser/CST)
+        generated   // created after the document (programmatically generated)
+    };
+
     struct typed_value;
 
     using value = std::variant<
@@ -146,6 +152,8 @@ namespace arf
         value_locus         origin;
         semantic_state      semantic      = semantic_state::valid;
         contamination_state contamination = contamination_state::clean;
+        creation_state      creation      = creation_state::authored;
+        bool                is_edited     = false;
 
         std::string value_to_string() const noexcept;
     };
@@ -164,16 +172,21 @@ namespace arf
         return {};
     }
         
-    inline bool is_valid(const typed_value &value) { return value.semantic == semantic_state::valid; }
-    inline bool is_clean(const typed_value &value) { return value.contamination == contamination_state::clean; }
-    inline bool is_numeric(value_type type) { return type == value_type::integer || type == value_type::decimal; }
-    inline bool is_numeric(const typed_value &value) { return is_numeric(value.type); }
-    inline bool is_array(value_type type) { return type == value_type::string_array || type == value_type::int_array || type == value_type::float_array; }
-    inline bool is_array(const typed_value &value) { return is_array(value.type); }
-    inline bool is_string(value_type type) { return type == value_type::string; }
-    inline bool is_string(const typed_value &value) { return is_string(value.type); }
-    inline bool is_boolean(value_type type) { return type == value_type::boolean; }
-    inline bool is_boolean(const typed_value &value) { return is_boolean(value.type); }
+    inline bool is_valid(const typed_value &value)     { return value.semantic == semantic_state::valid; }
+    inline bool is_clean(const typed_value &value)     { return value.contamination == contamination_state::clean; }
+    inline bool is_authored(const typed_value &value)  { return value.creation == creation_state::authored; }
+    inline bool is_generated(const typed_value &value) { return value.creation == creation_state::generated; }
+    inline bool is_edited(const typed_value &value)    { return value.is_edited; }
+
+    //inline bool is_numeric(value_type type)         { return type == value_type::integer || type == value_type::decimal; }
+    //inline bool is_array(value_type type)           { return type == value_type::string_array || type == value_type::int_array || type == value_type::float_array; }
+    //inline bool is_string(value_type type)          { return type == value_type::string; }
+    //inline bool is_boolean(value_type type)         { return type == value_type::boolean; }
+
+    inline bool is_numeric(const typed_value &value) { return std::holds_alternative<int64_t>(value.val) || std::holds_alternative<double>(value.val); }
+    inline bool is_array(const typed_value &value)   { return std::holds_alternative<std::vector<typed_value>>(value.val); }
+    inline bool is_string(const typed_value &value)  { return std::holds_alternative<std::string>(value.val); }
+    inline bool is_boolean(const typed_value &value) { return std::holds_alternative<bool>(value.val); }
 
 //========================================================================
 // Remaining data structures

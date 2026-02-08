@@ -508,10 +508,6 @@ static bool option_compact_blank_lines()
     std::ostringstream out;
     serializer s(ctx.document, opts);
     s.write(out);
-    
-    std::cout << "=== SOURCE ===\n" << src << "\n";
-    std::cout << "=== OUTPUT ===\n" << out.str() << "\n";
-    std::cout << "=== END ===\n";
         
     std::string expected = "a = 1\nb = 2\n";
     EXPECT(out.str() == expected, "compact blank lines failed");

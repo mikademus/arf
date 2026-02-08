@@ -708,7 +708,7 @@ namespace arf::reflect
                 if (!ctx.value)
                     error(step_error::no_context_value);
 
-                else if (!is_array(ctx.value->type))
+                else if (!is_array(*ctx.value))
                     error(step_error::not_an_array);
 
                 else
@@ -746,7 +746,7 @@ namespace arf::reflect
                         // If this is an array value and we might index it,
                         // store the value pointer instead of the key_view
                         const auto& val = ctx.key->value();
-                        if (is_array(val.type))
+                        if (is_array(val))
                             last_valid_item = &val;
                         else
                             last_valid_item = *ctx.key;
@@ -902,7 +902,7 @@ namespace arf::reflect
 
         auto query_value = [&](auto&& node) -> structural_query_result
         {
-            if (node && is_array(node->type))
+            if (node && is_array(*node))
             {
                 auto& arr = std::get<std::vector<typed_value>>(node->val);
                 for (size_t i = 0; i < arr.size(); ++i)

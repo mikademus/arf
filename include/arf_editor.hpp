@@ -113,6 +113,22 @@ namespace arf
 
         bool erase_row(table_row_id id);
 
+    //============================================================
+    // Type control (explicit, opt-in)
+    //============================================================
+
+        bool set_key_type(
+            key_id id,
+            value_type type,
+            type_ascription ascription = type_ascription::declared
+        );
+
+        bool set_column_type(
+            column_id id,
+            value_type type,
+            type_ascription ascription = type_ascription::declared
+        );
+
     private:
         document& doc_;
 
