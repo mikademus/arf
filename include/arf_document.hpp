@@ -9,11 +9,13 @@
 #include "arf_parser.hpp"
 
 #include <cassert>
+#include <functional>
 #include <iterator>
 #include <iostream>
 #include <memory>
 #include <ranges>
 #include <span>
+#include <unordered_set>
 
 namespace arf
 {
@@ -24,9 +26,9 @@ namespace arf
 
     class document
     {
-        //------------------------------------------------------------------------
-        // Node base class
-        //------------------------------------------------------------------------
+    //------------------------------------------------------------------------
+    // Node base class
+    //------------------------------------------------------------------------
 
         struct empty_struct {};
 
@@ -58,9 +60,9 @@ namespace arf
 
     public:
 
-        //------------------------------------------------------------------------
-        // Public, read-only views
-        //------------------------------------------------------------------------
+    //------------------------------------------------------------------------
+    // Public, read-only views
+    //------------------------------------------------------------------------
 
         struct category_view;
         struct table_view;
@@ -68,9 +70,9 @@ namespace arf
         struct table_row_view;
         struct key_view;
 
-        //------------------------------------------------------------------------
-        // Construction
-        //------------------------------------------------------------------------
+    //------------------------------------------------------------------------
+    // Construction
+    //------------------------------------------------------------------------
 
         document() = default;
         ~document() = default;  // unique_ptr handles cleanup
@@ -83,9 +85,9 @@ namespace arf
         document(document&&) = default;
         document& operator=(document&&) = default;
         
-        //------------------------------------------------------------------------
-        // Category access
-        //------------------------------------------------------------------------
+    //------------------------------------------------------------------------
+    // Category access
+    //------------------------------------------------------------------------
 
         size_t category_count() const noexcept { return categories_.size(); }
         std::optional<category_view> root() const noexcept;
@@ -93,33 +95,33 @@ namespace arf
         std::optional<category_view> category(category_id id) const noexcept;
         std::vector<category_view>   categories() const noexcept;
 
-        //------------------------------------------------------------------------
-        // Table access
-        //------------------------------------------------------------------------
+    //------------------------------------------------------------------------
+    // Table access
+    //------------------------------------------------------------------------
 
         size_t table_count() const noexcept { return tables_.size(); }
         std::optional<table_view> table(table_id id) const noexcept;    
         std::vector<table_view>   tables() const noexcept;
 
-        //------------------------------------------------------------------------
-        // Column access
-        //------------------------------------------------------------------------
+    //------------------------------------------------------------------------
+    // Column access
+    //------------------------------------------------------------------------
 
         size_t column_count() const noexcept { return columns_.size(); }
         std::optional<column_view> column(column_id id) const noexcept;
         std::vector<column_view>   columns() const noexcept;
 
-        //------------------------------------------------------------------------
-        // Row access
-        //------------------------------------------------------------------------
+    //------------------------------------------------------------------------
+    // Row access
+    //------------------------------------------------------------------------
 
         size_t row_count() const noexcept { return rows_.size(); }
         std::optional<table_row_view> row(table_row_id id) const noexcept;
         std::vector<table_row_view>   rows() const noexcept;
 
-        //------------------------------------------------------------------------
-        // Key access
-        //------------------------------------------------------------------------
+    //------------------------------------------------------------------------
+    // Key access
+    //------------------------------------------------------------------------
 
         size_t key_count() const noexcept { return keys_.size(); }
         std::optional<key_view> key(std::string_view name) const noexcept;
@@ -134,20 +136,36 @@ namespace arf
         comment_id create_comment(std::string text);
         paragraph_id create_paragraph(std::string text);
 
-    // NOTE: Should this really be public?
-    // NOTE: Aggregation model of contamination:
-    //       - An element contaminates its item
-    //       - Contamination propagates through the nodes
-    //       - Finally the document gets the contamination flag.
-    //       = THIS MUST BE MAINTAINED
-        contamination_state contamination {contamination_state::clean};
+    //------------------------------------------------------------------------
+    // Contamination management
+    //------------------------------------------------------------------------
 
-    //private:
+        void mark_key_contaminated(key_id id);
+        void mark_row_contaminated(table_row_id id);
 
-        //------------------------------------------------------------------------
-        // Internal storage (fully normalised)
-        //------------------------------------------------------------------------
-        
+        // Used by request_clear_contamination
+        using clearable_node = std::variant<key_id, table_row_id>;
+
+        // A client is requesting the contamination of
+        // a key or row to be cleared. 
+        bool request_clear_contamination(clearable_node node);
+
+        // Used by request_clear_contamination(node).
+        // Set this value to control whether contamination is allowed
+        // to be cleared. Defaults to always permissive. This is 
+        // primarily intended as a feature for tooling.
+        std::function<bool(clearable_node)> request_clear_fn 
+            = [](clearable_node){return true;};
+
+        bool has_contamination_sources() const
+        {
+            return !contaminated_source_keys_.empty() || !contaminated_source_rows_.empty();
+        }
+
+    //------------------------------------------------------------------------
+    // Definitions for internal storage nodes (fully normalised)
+    //------------------------------------------------------------------------
+
         enum class category_close_form
         {
             shorthand,   // "/"
@@ -175,7 +193,7 @@ namespace arf
             source_id id;
         };
 
-        struct category_node : node<false>
+        struct category_node : node<false, true>
         {
             typedef category_id id_type;
             id_type _id() const noexcept { return id; }
@@ -279,18 +297,18 @@ namespace arf
 
             auto find_id = [id_](std::vector<NodeT> & nodes) -> NodeT *
             {
-                if (auto it = std::ranges::find_if(nodes, [id_](auto& item){return item.id == id_;}); it != nodes.end())
+                if (auto it = std::ranges::find_if(nodes, [id_](auto& item){return item._id() == id_;}); it != nodes.end())
                     return &*it;
                 return nullptr;
             };
 
-            if constexpr      (std::is_same_v<::arf::id<T>, category_id>)  { return find_id(categories_); }
-            else if constexpr (std::is_same_v<::arf::id<T>, key_id>)       { return find_id(keys_); }
-            else if constexpr (std::is_same_v<::arf::id<T>, table_id>)     { return find_id(tables_); }
-            else if constexpr (std::is_same_v<::arf::id<T>, table_row_id>) { return find_id(rows_); }
-            else if constexpr (std::is_same_v<::arf::id<T>, column_id>)    { return find_id(columns_); }
-            else if constexpr (std::is_same_v<::arf::id<T>, comment_id>)   { return find_id(comments_); }
-            else if constexpr (std::is_same_v<::arf::id<T>, paragraph_id>) { return find_id(paragraphs_); }
+            if constexpr      (std::is_same_v<T, category_tag>)     { return find_id(categories_); }
+            else if constexpr (std::is_same_v<T, key_tag>)          { return find_id(keys_); }
+            else if constexpr (std::is_same_v<T, table_tag>)        { return find_id(tables_); }
+            else if constexpr (std::is_same_v<T, table_row_tag>)    { return find_id(rows_); }
+            else if constexpr (std::is_same_v<T, table_column_tag>) { return find_id(columns_); }
+            else if constexpr (std::is_same_v<T, comment_tag>)      { return find_id(comments_); }
+            else if constexpr (std::is_same_v<T, paragraph_tag>)    { return find_id(paragraphs_); }
             else static_assert(false, "Illegal ID");
         };        
         
@@ -303,6 +321,25 @@ namespace arf
         std::vector<key_node>        keys_;
         std::vector<comment_node>    comments_;
         std::vector<paragraph_node>  paragraphs_;
+
+        // These collect contamination sources. Only data positions 
+        // (keys and rows) are sources of contamination. Categories
+        // and tables will propagate contaminiation but will never
+        // be sources. 
+        //
+        // Note: The sets represent root contamination sources only.
+        //       Node flags represent derived contamination state.
+        //
+        // A document is clean if these containers are empty
+        // contaminated if there is at lease one record in either. 
+        std::unordered_set<size_t>  contaminated_source_keys_;
+        std::unordered_set<size_t>  contaminated_source_rows_;
+
+        // These imperatively set the clean state. Prefer
+        // the request_clear_contamination method to allow 
+        // the document or tooling to delegate the decision.
+        void clear_key_contamination(key_id id);
+        void clear_row_contamination(table_row_id id);        
 
         bool row_is_valid(document::row_node const& r);
         bool table_is_valid(document::table_node const& t);
@@ -321,8 +358,14 @@ namespace arf
 
         template<typename T>
         std::optional<typename node_to_view<T>::view_type>
-        to_view(std::vector<T> const & cont, typename std::vector<T>::const_iterator it) const noexcept;
+            to_view(std::vector<T> const & cont, typename std::vector<T>::const_iterator it) const noexcept; 
 
+        bool key_is_clean(const key_node& k) const;
+        bool row_is_clean(const row_node& r) const;
+        bool table_is_clean(const table_node& t) const;
+        bool category_is_clean(const category_node& c) const;
+        void propagate_contamination_up_category_chain(category_id id);
+        void try_clear_category_contamination(category_id id);
 
         //------------------------------------------------------------------------
         // View construction helpers
@@ -334,7 +377,8 @@ namespace arf
 
     public:
 
-    // Priviliged access for debug purpose. Should be removed when editor is done.
+// Priviliged access for debug purpose. Should be removed when editor is done.
+#ifdef ARF_EDITOR_HPP
         std::vector<category_node>&   access_category_nodes() { return categories_; }
         std::vector<table_node>&      access_table_nodes() { return tables_; }
         std::vector<column_node>&     access_column_nodes() { return columns_; }
@@ -343,6 +387,7 @@ namespace arf
         std::vector<comment_node>&    access_comment_nodes() { return comments_; }
         std::vector<paragraph_node>&  access_paragraph_nodes() { return paragraphs_; }
         const parse_context* get_source_context() const { return source_context_.get(); }
+#endif        
     };
 
 //========================================================================
@@ -500,6 +545,284 @@ namespace arf
         paragraph_id pid{paragraphs_.size()};
         paragraphs_.push_back({.id = pid, .text = text});
         return pid;
+    }
+
+    inline void document::mark_key_contaminated(key_id id)
+    {
+        if (contaminated_source_keys_.contains(static_cast<size_t>(id)))
+            return;
+
+        auto* kn = get_node(id);
+        if (!kn) return;
+        
+        // Mark key and value as contaminated
+        kn->contamination = contamination_state::contaminated;
+        kn->value.contamination = contamination_state::contaminated;
+        
+        // Register as source
+        contaminated_source_keys_.insert(static_cast<size_t>(id));
+        
+        // Propagate flags upward (but don't register containers)
+        if (kn->owner != invalid_id<category_tag>())
+        {
+            auto* cat = get_node(kn->owner);
+            if (cat)
+            {
+                cat->contamination = contamination_state::contaminated;
+                propagate_contamination_up_category_chain(kn->owner);
+            }
+        }
+    }
+
+    inline void document::mark_row_contaminated(table_row_id id)
+    {
+        auto* rn = get_node(id);
+        if (!rn) return;
+        
+        // Mark row as contaminated
+        rn->contamination = contamination_state::contaminated;
+        
+        // Register as source
+        contaminated_source_rows_.insert(static_cast<size_t>(id));
+        
+        // Propagate to table
+        auto* tbl = get_node(rn->table);
+        if (tbl)
+        {
+            tbl->contamination = contamination_state::contaminated;
+            
+            // Propagate to owning category
+            auto* cat = get_node(tbl->owner);
+            if (cat)
+            {
+                cat->contamination = contamination_state::contaminated;
+                propagate_contamination_up_category_chain(tbl->owner);
+            }
+        }
+    }
+
+    inline void document::propagate_contamination_up_category_chain(category_id id)
+    {
+        auto* cat = get_node(id);
+        if (!cat) return;
+
+        auto parent_id = cat->parent;
+        if (parent_id == invalid_id<category_tag>())
+            return;
+
+        auto* parent = get_node(parent_id);
+        if (!parent) return;
+
+        if (parent->contamination == contamination_state::contaminated)
+            return;
+
+        parent->contamination = contamination_state::contaminated;
+        propagate_contamination_up_category_chain(parent_id);
+    }
+
+    inline bool document::key_is_clean(const key_node& k) const
+    {
+        if (k.semantic != semantic_state::valid)
+            return false;
+
+        if (k.value.contamination == contamination_state::contaminated)
+            return false;
+        
+        if (k.value.semantic == semantic_state::invalid)
+            return false;
+        
+        // Check array elements
+        if (is_array(k.value))
+        {
+            auto& arr = std::get<std::vector<typed_value>>(k.value.val);
+            for (auto& elem : arr)
+            {
+                if (elem.semantic == semantic_state::invalid ||
+                    elem.contamination == contamination_state::contaminated)
+                    return false;
+            }
+        }
+        
+        return true;
+    }
+
+    inline bool document::row_is_clean(const row_node& r) const
+    {
+        if (r.semantic != semantic_state::valid)
+            return false;
+        
+        for (auto& cell : r.cells)
+        {
+            if (cell.semantic == semantic_state::invalid ||
+                cell.contamination == contamination_state::contaminated)
+                return false;
+            
+            // Check array cells
+            if (is_array(cell))
+            {
+                auto& arr = std::get<std::vector<typed_value>>(cell.val);
+                for (auto& elem : arr)
+                {
+                    if (elem.semantic == semantic_state::invalid ||
+                        elem.contamination == contamination_state::contaminated)
+                        return false;
+                }
+            }
+        }
+        
+        return true;
+    }
+
+    inline bool document::table_is_clean(const table_node& t) const
+    {
+        if (t.semantic != semantic_state::valid)
+            return false;
+        
+        // Check all columns
+        for (auto col_id : t.columns)
+        {
+            auto it = find_node_by_id(columns_, col_id);
+            if (it != columns_.end() && it->col.semantic != semantic_state::valid)
+                return false;
+        }
+        
+        // Check all rows
+        for (auto row_id : t.rows)
+        {
+            auto it = find_node_by_id(rows_, row_id);
+            if (it != rows_.end() && !row_is_clean(*it))
+                return false;
+        }
+        
+        return true;
+    }
+
+    inline bool document::category_is_clean(const category_node& c) const
+    {
+        if (c.semantic != semantic_state::valid)
+            return false;
+        
+        // Check all keys
+        for (auto kid : c.keys)
+        {
+            auto it = find_node_by_id(keys_, kid);
+            if (it != keys_.end() && !key_is_clean(*it))
+                return false;
+        }
+        
+        // Check all tables
+        for (auto tid : c.tables)
+        {
+            auto it = find_node_by_id(tables_, tid);
+            if (it != tables_.end() && !table_is_clean(*it))
+                return false;
+        }
+        
+        // Check all subcategories
+        for (auto cid : c.children)
+        {
+            auto it = find_node_by_id(categories_, cid);
+            if (it != categories_.end() && 
+                it->contamination == contamination_state::contaminated)
+                return false;
+        }
+        
+        return true;
+    }
+
+    inline bool document::request_clear_contamination(clearable_node node)
+    {
+        // Step 1: Validate node is actually clean
+        bool is_clean = std::visit([this](auto id) -> bool 
+        {
+            using T = decltype(id);
+            if constexpr (std::is_same_v<T, key_id>) 
+            {
+                auto* kn = get_node(id);
+                return kn && key_is_clean(*kn);
+            } 
+            else 
+            {
+                auto* rn = get_node(id);
+                return rn && row_is_clean(*rn);
+            }
+        }, node);
+        
+        if (!is_clean)
+            return false;
+        
+        // Step 2: Ask permission
+        if (!request_clear_fn(node))
+            return false;
+        
+        // Step 3: Perform clearing
+        std::visit([this](auto id) 
+        {
+            using T = decltype(id);
+            if constexpr (std::is_same_v<T, key_id>)
+                clear_key_contamination(id);
+            else
+                clear_row_contamination(id);
+        }, node);
+        
+        return true;
+    }
+
+    inline void document::clear_key_contamination(key_id id)
+    {
+        auto* kn = get_node(id);
+        if (!kn) return;
+        
+        // Only clear if actually clean
+        if (!key_is_clean(*kn))
+            return;
+        
+        // Clear flags
+        kn->contamination = contamination_state::clean;
+        kn->value.contamination = contamination_state::clean;
+        
+        // Unregister as source
+        contaminated_source_keys_.erase(static_cast<size_t>(id));
+        
+        // Try to clear parent category
+        if (kn->owner != invalid_id<category_tag>())
+            try_clear_category_contamination(kn->owner);
+    }
+
+    inline void document::clear_row_contamination(table_row_id id)
+    {
+        auto* rn = get_node(id);
+        if (!rn) return;
+        
+        if (!row_is_clean(*rn))
+            return;
+        
+        rn->contamination = contamination_state::clean;
+        contaminated_source_rows_.erase(static_cast<size_t>(id));
+        
+        auto* tbl = get_node(rn->table);
+        if (!tbl) return;
+
+        if (table_is_clean(*tbl))
+        {
+            tbl->contamination = contamination_state::clean;
+            try_clear_category_contamination(tbl->owner);
+        }
+    }
+
+    inline void document::try_clear_category_contamination(category_id id)
+    {
+        auto* cat = get_node(id);
+        if (!cat) return;
+        
+        if (!category_is_clean(*cat))
+            return;
+        
+        cat->contamination = contamination_state::clean;
+        
+        // Continue up to parent
+        if (cat->parent != invalid_id<category_tag>())
+            try_clear_category_contamination(cat->parent);
     }
 
     inline std::optional<document::category_view>

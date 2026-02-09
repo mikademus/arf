@@ -172,6 +172,12 @@ namespace ed
             value val
         );
 
+        void set_array_elements
+        (
+            key_id key,
+            std::vector<value> vals
+        );
+
         void delete_array_element
         (
             key_id key,
@@ -193,6 +199,13 @@ namespace ed
             column_id col,
             size_t index,
             value val
+        );
+
+        void set_array_elements
+        (
+            table_row_id row,
+            column_id col,
+            std::vector<value> vals
         );
 
         void delete_array_element
@@ -219,20 +232,20 @@ namespace ed
         );
 
         // Provides access to the document's internal container
-        // node corresponding to an entity ID. This is very 
-        // power-user territory and should be avoided in 
+        // node corresponding to an entity ID.  
+        // Warning: power-user territory and should be avoided in 
         // general use. 
         template<typename Tag>
         typename document::to_node_type<Tag>::type* 
-        _access_internal_document_container( id<Tag> id_ )
+        _unsafe_access_internal_document_container( id<Tag> id_ )
         {
             return doc_.get_node(id_);
         }
 
     private:
+
         document& doc_;
 
-    private:
         //========================================================
         // Internal helpers — NEVER exposed
         //========================================================
@@ -253,37 +266,47 @@ namespace ed
         bool scope_allows_key(category_id where) const noexcept;
     };
 
-    void editor::set_key_value( key_id key, value val )
+//========================================================
+// Editor implementations
+//========================================================
+
+    void editor::set_key_value(key_id key, value val)
     {
         auto* kn = doc_.get_node(key);
-
-        if (!kn)
-            return;
+        if (!kn) return;
         
         auto& tv = kn->value;
-
+        
         // Replace payload
         tv.val = std::move(val);
-
-        // Provenance stays key-bound
         tv.origin = value_locus::key_value;
-
-        // Mark as edited
         tv.is_edited = true;
-
-        // Re-evaluate semantic validity only if typed
+        
+        // Re-evaluate semantic validity
         if (tv.type != value_type::unresolved)
         {
             if (tv.held_type() != tv.type)
+            {
+                // Type mismatch → contaminate
                 tv.semantic = semantic_state::invalid;
+                kn->semantic = semantic_state::invalid;
+                doc_.mark_key_contaminated(key);
+            }
             else
+            {
+                // Valid → try to clear
                 tv.semantic = semantic_state::valid;
+                doc_.clear_key_contamination(key);
+            }
         }
-
-        // Mark structural node as edited (cheap aggregation flag)
+        else
+        {
+            tv.semantic = semantic_state::valid;
+            doc_.clear_key_contamination(key);
+        }
+        
         kn->is_edited = true;
     }
-
 
 }
 

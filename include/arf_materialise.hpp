@@ -648,15 +648,6 @@ namespace
             }
         }
 
-        for (auto const& cat : doc_.categories_)
-        {
-            if (cat.contamination == contamination_state::contaminated)
-            {
-                doc_.contamination = contamination_state::contaminated;
-                break;
-            }
-        }
-
         if (opts_.own_parser_data)
         {
             // Transfer ownership via move
@@ -667,6 +658,15 @@ namespace
                 //std::make_unique<parse_context>(std::move(const_cast<parse_context&>(ctx_)));
         }
                 
+        // Register contamination sources
+        for (auto const& key : doc_.keys_)
+            if (key.contamination == contamination_state::contaminated)
+                doc_.mark_key_contaminated(key.id);
+
+        for (auto const& row : doc_.rows_)
+            if (row.contamination == contamination_state::contaminated)
+                doc_.mark_row_contaminated(row.id);
+
         return std::move(out_);
     }
 
@@ -869,6 +869,9 @@ namespace
                         tbl.contamination = contamination_state::contaminated;
                     }
                 }
+
+                if (tbl.contamination == contamination_state::contaminated)
+                    doc_.propagate_contamination_up_category_chain(col_.owner);
             }
             else
             {
@@ -985,9 +988,6 @@ namespace
         doc_.rows_.push_back(std::move(row));
         tbl.rows.push_back(rid);
         insert_source_item(rid);
-
-        if (row.contamination == contamination_state::contaminated)
-            tbl.contamination = contamination_state::contaminated;
     }
 
     inline void materialiser::handle_key(parse_event const& ev, size_t parse_idx)
@@ -1085,12 +1085,6 @@ namespace
 
         cat.keys.emplace_back(id);
         insert_source_item(id);
-        
-        if (key.semantic == semantic_state::invalid ||
-            key.contamination == contamination_state::contaminated)
-        {
-            cat.contamination = contamination_state::contaminated;
-        }
     }
 
     document::table_node * materialiser::find_table(table_id tid)
