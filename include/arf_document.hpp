@@ -259,9 +259,41 @@ namespace arf
         {
             paragraph_id id;
             std::string  text;  // verbatim, may be multi-line, preserves leading whitespace and line breaks
-        };        
-
+        };    
+        
     private:
+
+        template<typename T> struct to_node_type;
+        template<> struct to_node_type<category_tag>     { typedef category_node type; };
+        template<> struct to_node_type<key_tag>          { typedef key_node type; };
+        template<> struct to_node_type<table_tag>        { typedef table_node type; };
+        template<> struct to_node_type<table_row_tag>    { typedef row_node type; };
+        template<> struct to_node_type<table_column_tag> { typedef column_node type; };
+        template<> struct to_node_type<comment_tag>      { typedef comment_node type; };
+        template<> struct to_node_type<paragraph_tag>    { typedef paragraph_node type; };
+
+        template<typename T>
+        constexpr typename document::to_node_type<T>::type* get_node( ::arf::id<T> id_ ) noexcept
+        {
+            using NodeT = typename document::to_node_type<T>::type;
+
+            auto find_id = [id_](std::vector<NodeT> & nodes) -> NodeT *
+            {
+                if (auto it = std::ranges::find_if(nodes, [id_](auto& item){return item.id == id_;}); it != nodes.end())
+                    return &*it;
+                return nullptr;
+            };
+
+            if constexpr      (std::is_same_v<::arf::id<T>, category_id>)  { return find_id(categories_); }
+            else if constexpr (std::is_same_v<::arf::id<T>, key_id>)       { return find_id(keys_); }
+            else if constexpr (std::is_same_v<::arf::id<T>, table_id>)     { return find_id(tables_); }
+            else if constexpr (std::is_same_v<::arf::id<T>, table_row_id>) { return find_id(rows_); }
+            else if constexpr (std::is_same_v<::arf::id<T>, column_id>)    { return find_id(columns_); }
+            else if constexpr (std::is_same_v<::arf::id<T>, comment_id>)   { return find_id(comments_); }
+            else if constexpr (std::is_same_v<::arf::id<T>, paragraph_id>) { return find_id(paragraphs_); }
+            else static_assert(false, "Illegal ID");
+        };        
+        
         std::unique_ptr<parse_context> source_context_;
 
         std::vector<category_node>   categories_;
@@ -298,6 +330,7 @@ namespace arf
 
         friend struct materialiser;
         friend class serializer;
+        friend class editor;
 
     public:
 

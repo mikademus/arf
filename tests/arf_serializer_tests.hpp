@@ -11,7 +11,7 @@ using namespace arf;
 
 #define with(x) if (x; []{ return true; }())
 
-static bool foo()
+static bool roundtrip()
 {
     constexpr std::string_view src =
         "a = 42\n"
@@ -653,6 +653,7 @@ static bool indent_fallback_when_no_siblings()
 inline void run_seriealizer_tests()
 {
     SUBCAT("Roundtrip - Preservation");
+    RUN_TEST(roundtrip);
     RUN_TEST(roundtrip_simple_key);
     RUN_TEST(roundtrip_typed_key);
     RUN_TEST(roundtrip_multiple_keys);

@@ -157,6 +157,7 @@ namespace arf
         bool                is_edited     = false;
 
         std::string value_to_string() const noexcept;
+        value_type held_type() const noexcept;
     };
 
     inline std::string typed_value::value_to_string() const noexcept
@@ -172,6 +173,29 @@ namespace arf
 
         return {};
     }
+
+    value_type typed_value::held_type() const noexcept
+    {
+        if (std::holds_alternative<std::string>(val)) return value_type::string;
+        if (std::holds_alternative<int64_t>(val)) return value_type::integer;
+        if (std::holds_alternative<double>(val)) return value_type::decimal;
+        if (std::holds_alternative<bool>(val)) return value_type::boolean;
+        if (std::holds_alternative<std::vector<typed_value>>(val)) 
+        {
+            auto const & vec = std::get<std::vector<typed_value>>(val);
+            if (!vec.empty())
+                switch (vec.front().held_type())
+                {
+                   case value_type::string: return value_type::string_array;
+                   case value_type::integer: return value_type::int_array;
+                   case value_type::decimal: return value_type::float_array;
+                   default: break;
+                }
+            }
+
+        return value_type::unresolved;
+    }
+
         
     inline bool is_valid(const typed_value &value)     { return value.semantic == semantic_state::valid; }
     inline bool is_clean(const typed_value &value)     { return value.contamination == contamination_state::clean; }
