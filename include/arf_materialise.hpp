@@ -169,8 +169,8 @@ namespace
         static std::unordered_map<std::string_view, bool> booleans = 
         {
             {"true", true}, {"false", false},
-            {"yes",  true}, {"no",    false},
-            {"on",   true}, {"off",   false},
+            // {"yes",  true}, {"no",    false},
+            // {"on",   true}, {"off",   false},
         };
 
         if (auto it = booleans.find(s); it != booleans.end())
