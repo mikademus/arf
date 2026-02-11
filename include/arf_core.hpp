@@ -301,6 +301,17 @@ namespace arf
         constexpr size_t MAX_LINES = 1'000'000;
         constexpr std::string_view ROOT_CATEGORY_NAME = "__root__";
         
+        inline value_type array_element_type(value_type array_type)
+        {
+            switch (array_type)
+            {
+                case value_type::string_array: return value_type::string;
+                case value_type::int_array:    return value_type::integer;
+                case value_type::float_array:  return value_type::decimal;
+                default:                       return value_type::unresolved;
+            }
+        }
+
         inline std::string type_to_string(value_type type)
         {
             switch (type)

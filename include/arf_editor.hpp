@@ -105,14 +105,14 @@ namespace arf
         void append_array_element( table_row_id row, column_id col, value val );
 
         void set_array_element( table_row_id row, column_id col, size_t index, value val );
-        /* IMPLEMENT */ void set_array_elements( table_row_id row, column_id col, std::vector<value> vals );
+        void set_array_elements( table_row_id row, column_id col, std::vector<value> vals );
 
     //============================================================
     // Type control (explicit, opt-in)
     //============================================================
 
-        /* IMPLEMENT */ bool set_key_type( key_id id, value_type type, type_ascription ascription = type_ascription::declared );
-        /* IMPLEMENT */ bool set_column_type( column_id id, value_type type, type_ascription ascription = type_ascription::declared );
+        bool set_key_type( key_id id, value_type type, type_ascription ascription = type_ascription::declared );
+        bool set_column_type( column_id id, value_type type, type_ascription ascription = type_ascription::declared );
 
     //============================================================
     // Low-level access to document internals
@@ -780,12 +780,32 @@ namespace arf
 
         auto& tv = kn->value;
 
-        value_type declared_type = kn->type;
+        // Determine array type from key's declared type or infer from first element
+        value_type array_type = kn->type;
+        
+        // If key is untyped, infer from first element
+        if (array_type == value_type::unresolved && !arr.empty())
+        {
+            value_type elem_type = held_type(arr[0]);
+            
+            switch (elem_type)
+            {
+                case value_type::string:  array_type = value_type::string_array; break;
+                case value_type::integer: array_type = value_type::int_array;    break;
+                case value_type::decimal: array_type = value_type::float_array;  break;
+                default:                  array_type = value_type::unresolved;   break;
+            }
+        }
 
-        bool structural_invalid =
-            (!is_array_type(declared_type) &&
-            declared_type != value_type::unresolved);
+        // Validate: if key has declared type, it must be array type
+        bool structural_invalid = false;
+        if (kn->type != value_type::unresolved && 
+            !is_array_type(kn->type))
+        {
+            structural_invalid = true;
+        }
 
+        // Build typed array
         std::vector<typed_value> typed_arr;
         typed_arr.reserve(arr.size());
 
@@ -795,7 +815,7 @@ namespace arf
         {
             typed_value elem = make_array_element(
                 std::move(v),
-                declared_type,
+                array_type,
                 value_locus::key_value
             );
 
@@ -805,13 +825,14 @@ namespace arf
             typed_arr.push_back(std::move(elem));
         }
 
-        // Always store the value (editor never discards intent)
-        tv.val       = std::move(typed_arr);
-        tv.type      = declared_type;
-        tv.origin    = value_locus::key_value;
-        tv.creation  = creation_state::generated;
-        tv.is_edited = true;
-        tv.semantic  = semantic_state::valid; // array container itself valid
+        // Replace value
+        tv.val           = std::move(typed_arr);
+        tv.type          = array_type;
+        tv.type_source   = kn->type_source;
+        tv.origin        = value_locus::key_value;
+        tv.creation      = creation_state::generated;
+        tv.is_edited     = true;
+        tv.semantic      = semantic_state::valid; // array container itself valid
 
         bool key_invalid = structural_invalid || has_invalid_element;
 
@@ -833,7 +854,7 @@ namespace arf
         }
 
         kn->is_edited = true;
-    }
+    }    
 
 //-------------------------------
 // Table cell array specialisation implementations
@@ -1663,6 +1684,199 @@ namespace arf
         return id;
     }
 
+//============================================================
+// Type control (explicit, opt-in)
+//============================================================
+
+    inline bool editor::set_key_type(
+        key_id id,
+        value_type type,
+        type_ascription ascription)
+    {
+        auto* kn = doc_.get_node(id);
+        if (!kn) return false;
+
+        // Store old type for validation
+        value_type old_type = kn->type;
+
+        // Update key metadata
+        kn->type        = type;
+        kn->type_source = ascription;
+        kn->is_edited   = true;
+
+        auto& tv = kn->value;
+        tv.type        = type;
+        tv.type_source = ascription;
+        tv.is_edited   = true;
+
+        // Re-validate value against new type
+        bool is_valid = true;
+
+        if (type != value_type::unresolved)
+        {
+            // For arrays, check array type matches
+            if (is_array(tv))
+            {
+                if (!is_array_type(type))
+                {
+                    // Trying to set non-array type on array value
+                    is_valid = false;
+                }
+                else
+                {
+                    // Check all elements against new array element type
+                    auto& arr = std::get<std::vector<typed_value>>(tv.val);
+                    value_type expected_elem_type = detail::array_element_type(type);
+
+                    for (auto& elem : arr)
+                    {
+                        if (elem.type != expected_elem_type)
+                        {
+                            elem.semantic = semantic_state::invalid;
+                            is_valid = false;
+                        }
+                        else
+                        {
+                            elem.semantic = semantic_state::valid;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Scalar value - check type match
+                if (tv.held_type() != type)
+                {
+                    is_valid = false;
+                }
+            }
+        }
+
+        // Update semantic state and contamination
+        if (!is_valid)
+        {
+            tv.semantic       = semantic_state::invalid;
+            tv.contamination  = contamination_state::contaminated;
+            kn->semantic      = semantic_state::invalid;
+            kn->contamination = contamination_state::contaminated;
+
+            doc_.mark_key_contaminated(id);
+        }
+        else
+        {
+            tv.semantic       = semantic_state::valid;
+            tv.contamination  = contamination_state::clean;
+            kn->semantic      = semantic_state::valid;
+            kn->contamination = contamination_state::clean;
+
+            doc_.request_clear_contamination(id);
+        }
+
+        return is_valid;
+    }
+
+    inline bool editor::set_column_type(
+        column_id id,
+        value_type type,
+        type_ascription ascription)
+    {
+        auto* cn = doc_.get_node(id);
+        if (!cn) return false;
+
+        auto* tbl = doc_.get_node(cn->table);
+        if (!tbl) return false;
+
+        // Find column index
+        auto col_it = std::ranges::find(tbl->columns, id);
+        if (col_it == tbl->columns.end()) return false;
+        
+        size_t col_idx = std::distance(tbl->columns.begin(), col_it);
+
+        // Update column metadata
+        cn->col.type        = type;
+        cn->col.type_source = ascription;
+        cn->is_edited       = true;
+
+        // Re-validate all cells in this column across all rows
+        bool any_invalid = false;
+
+        for (auto rid : tbl->rows)
+        {
+            auto* rn = doc_.get_node(rid);
+            if (!rn || col_idx >= rn->cells.size()) continue;
+
+            auto& cell = rn->cells[col_idx];
+            
+            cell.type        = type;
+            cell.type_source = ascription;
+            cell.is_edited   = true;
+
+            bool cell_valid = true;
+
+            if (type != value_type::unresolved)
+            {
+                // For arrays, check array type matches
+                if (is_array(cell))
+                {
+                    if (!is_array_type(type))
+                    {
+                        cell_valid = false;
+                    }
+                    else
+                    {
+                        // Check all elements
+                        auto& arr = std::get<std::vector<typed_value>>(cell.val);
+                        value_type expected_elem_type = detail::array_element_type(type);
+
+                        for (auto& elem : arr)
+                        {
+                            if (elem.type != expected_elem_type)
+                            {
+                                elem.semantic = semantic_state::invalid;
+                                cell_valid = false;
+                            }
+                            else
+                            {
+                                elem.semantic = semantic_state::valid;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // Scalar - check type match
+                    if (cell.held_type() != type)
+                    {
+                        cell_valid = false;
+                    }
+                }
+            }
+
+            // Update cell state
+            if (!cell_valid)
+            {
+                cell.semantic      = semantic_state::invalid;
+                cell.contamination = contamination_state::clean; // cell clean, row contaminated
+                rn->contamination  = contamination_state::contaminated;
+
+                doc_.mark_row_contaminated(rid);
+                any_invalid = true;
+            }
+            else
+            {
+                cell.semantic      = semantic_state::valid;
+                cell.contamination = contamination_state::clean;
+
+                // Try to clear row contamination (might still be contaminated from other cells)
+                doc_.request_clear_contamination(rid);
+            }
+
+            rn->is_edited = true;
+        }
+
+        return !any_invalid;
+    }
+    
 }
 
 #endif
