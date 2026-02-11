@@ -29,6 +29,9 @@ namespace arf
 
 //========================================================================
 // IDs
+// ---------------------------
+// IDs are opaque handles and never represent positional indices
+// into storage containers.
 //========================================================================
 
     inline constexpr size_t npos() { return static_cast<size_t>(-1); }
@@ -46,12 +49,19 @@ namespace arf
         auto operator<=>(id const &) const = default;
         id & operator++() { ++val; return *this; }
         id operator++(int) { id temp = *this; ++val; return temp; }
+        bool valid() const noexcept { return val != npos(); }
     };
     
     template <typename Tag>
     constexpr id<Tag> invalid_id()
     {
         return id<Tag>{ npos() };
+    }
+
+    template<typename Tag>
+    bool valid( id<Tag> id_ )
+    {
+        return id_.valid();
     }
 
     struct category_tag;
@@ -208,7 +218,7 @@ namespace arf
     inline bool is_edited(const typed_value &value)    { return value.is_edited; }
 
     //inline bool is_numeric(value_type type)         { return type == value_type::integer || type == value_type::decimal; }
-    //inline bool is_array(value_type type)           { return type == value_type::string_array || type == value_type::int_array || type == value_type::float_array; }
+    inline bool is_array_type(value_type type)           { return type == value_type::string_array || type == value_type::int_array || type == value_type::float_array; }
     //inline bool is_string(value_type type)          { return type == value_type::string; }
     //inline bool is_boolean(value_type type)         { return type == value_type::boolean; }
 

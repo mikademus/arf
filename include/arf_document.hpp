@@ -188,6 +188,8 @@ namespace arf
         {
             category_id         which;
             category_close_form form;
+
+            bool operator==(category_close_marker const & rhs) const noexcept { return which == rhs.which; }
         };
 
         using source_id = std::variant<
@@ -203,6 +205,18 @@ namespace arf
         struct source_item_ref
         {
             source_id id;
+
+            bool operator==(source_item_ref const & rhs) const noexcept 
+            {
+                if (id.index() != rhs.id.index())
+                    return false;
+
+                return std::visit([&rhs](auto const & lhs_val)
+                {
+                    using T = std::decay_t<decltype(lhs_val)>;
+                    return lhs_val.operator==(std::get<T>(rhs.id));
+                }, id);                
+            }
         };
 
         struct category_node : node<false, true>
@@ -242,6 +256,7 @@ namespace arf
             typedef column_id id_type;
             id_type _id() const noexcept { return col.id; }
             std::string_view _name() const noexcept { return col.name; }
+            value_type _type() const noexcept { return col.type; }
             
             struct column   col;
             table_id        table;
