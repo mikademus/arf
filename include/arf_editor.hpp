@@ -91,6 +91,8 @@ namespace arf
 
     // Columns
     //----------------------------        
+        bool erase_column(column_id id);
+
         column_id append_column( table_id table_id, std::string_view name, std::optional<value_type> declared_type );
 
         column_id insert_column_before( column_id anchor, std::string_view name, std::optional<value_type> declared_type );
@@ -1340,6 +1342,62 @@ namespace arf
         return new_id;
     }
     
+    bool editor::erase_column(column_id id)
+    {
+        auto* cn = doc_.get_node(id);
+        if (!cn) return false;
+        
+        auto* tbl = doc_.get_node(cn->table);
+        if (!tbl) return false;
+        
+        // Find column index
+        auto col_it = std::ranges::find(tbl->columns, id);
+        if (col_it == tbl->columns.end()) return false;
+        
+        size_t col_idx = std::distance(tbl->columns.begin(), col_it);
+        
+        // Remove cells from all rows at this index
+        for (auto rid : tbl->rows)
+        {
+            auto* rn = doc_.get_node(rid);
+            if (!rn || col_idx >= rn->cells.size()) continue;
+            
+            rn->cells.erase(rn->cells.begin() + col_idx);
+            rn->is_edited = true;
+            
+            // Re-evaluate row contamination after cell removal
+            bool has_invalid = false;
+            for (auto& cell : rn->cells)
+            {
+                if (cell.semantic == semantic_state::invalid ||
+                    cell.contamination == contamination_state::contaminated)
+                {
+                    has_invalid = true;
+                    break;
+                }
+            }
+            
+            if (has_invalid)
+            {
+                rn->contamination = contamination_state::contaminated;
+                doc_.mark_row_contaminated(rid);
+            }
+            else
+            {
+                rn->contamination = contamination_state::clean;
+                doc_.request_clear_contamination(rid);
+            }
+        }
+        
+        // Remove column from table
+        tbl->columns.erase(col_it);
+        
+        // Remove column node
+        std::erase_if(doc_.columns_, [&](auto& c) { return c._id() == id; });
+        
+        return true;
+    }
+
     inline column_id editor::append_column(
         table_id table_id,
         std::string_view name, 
@@ -1350,16 +1408,30 @@ namespace arf
         if (!tbl) return invalid_id<table_column_tag>();
 
         column_id cid = create_column_node_only(table_id, name, declared_type);
-
         tbl->columns.push_back(cid);
 
-        tbl->ordered_items.push_back(
-            document::source_item_ref{ document::category_close_marker{tbl->owner} }
-        );
+        for (auto rid : tbl->rows) 
+        {
+            auto* rn = doc_.get_node(rid);
+            if (!rn) continue;
+            
+            typed_value empty_cell;
+            empty_cell.val = value{};  // monostate
+            empty_cell.type = declared_type.value_or(value_type::unresolved);
+            empty_cell.origin = value_locus::table_cell;
+            empty_cell.creation = creation_state::generated;
+            empty_cell.is_edited = true;
+            empty_cell.semantic = semantic_state::valid;
+            empty_cell.contamination = contamination_state::contaminated; 
+            
+            rn->cells.push_back(std::move(empty_cell));
+
+            // A monostate cell is invalid.
+            doc_.mark_row_contaminated(rid);
+        }
 
         return cid;
     }
-
 
     column_id editor::insert_column_before( 
         column_id anchor, 
@@ -1376,7 +1448,30 @@ namespace arf
         column_id cid = create_column_node_only(owner, name, declared_type);
 
         auto it = std::ranges::find(tbl->columns, anchor);
-        tbl->columns.insert(it, cid);
+        auto ins_it = tbl->columns.insert(it, cid);
+        auto dist = std::distance(tbl->columns.begin(), ins_it);
+
+        for (auto rid : tbl->rows) 
+        {
+            auto* rn = doc_.get_node(rid);
+            if (!rn) continue;
+            
+            typed_value empty_cell;
+            empty_cell.val = value{};  // monostate
+            empty_cell.type = declared_type.value_or(value_type::unresolved);
+            empty_cell.origin = value_locus::table_cell;
+            empty_cell.creation = creation_state::generated;
+            empty_cell.is_edited = true;
+            empty_cell.semantic = semantic_state::valid;
+            empty_cell.contamination = contamination_state::contaminated; 
+        
+            auto pos = rn->cells.begin();
+            std::advance( pos, dist );
+            rn->cells.insert( pos, std::move(empty_cell) );
+            
+            // A monostate cell is invalid.
+            doc_.mark_row_contaminated(rid);
+        }
 
         return cid;
     }
@@ -1397,7 +1492,30 @@ namespace arf
 
         auto it = std::ranges::find(tbl->columns, anchor);
         if (it != tbl->columns.end()) ++it;
-        tbl->columns.insert(it, cid);
+        auto ins_it = tbl->columns.insert(it, cid);
+        auto dist = std::distance(tbl->columns.begin(), ins_it);
+
+        for (auto rid : tbl->rows) 
+        {
+            auto* rn = doc_.get_node(rid);
+            if (!rn) continue;
+            
+            typed_value empty_cell;
+            empty_cell.val = value{};  // monostate
+            empty_cell.type = declared_type.value_or(value_type::unresolved);
+            empty_cell.origin = value_locus::table_cell;
+            empty_cell.creation = creation_state::generated;
+            empty_cell.is_edited = true;
+            empty_cell.semantic = semantic_state::valid;
+            empty_cell.contamination = contamination_state::contaminated; 
+        
+            auto pos = rn->cells.begin();
+            std::advance( pos, dist );
+            rn->cells.insert( pos, std::move(empty_cell) );
+            
+            // A monostate cell is invalid.
+            doc_.mark_row_contaminated(rid);
+        }
 
         return cid;
     }
@@ -2063,7 +2181,6 @@ namespace arf
         auto* tbl = doc_.get_node(cn->table);
         if (!tbl) return false;
 
-        // Find column index
         auto col_it = std::ranges::find(tbl->columns, id);
         if (col_it == tbl->columns.end()) return false;
         
@@ -2074,9 +2191,9 @@ namespace arf
         cn->col.type_source = ascription;
         cn->is_edited       = true;
 
-        // Re-validate all cells in this column across all rows
         bool any_invalid = false;
 
+        // PHASE 1: Update and validate each cell in this column
         for (auto rid : tbl->rows)
         {
             auto* rn = doc_.get_node(rid);
@@ -2092,7 +2209,6 @@ namespace arf
 
             if (type != value_type::unresolved)
             {
-                // For arrays, check array type matches
                 if (is_array(cell))
                 {
                     if (!is_array_type(type))
@@ -2101,7 +2217,6 @@ namespace arf
                     }
                     else
                     {
-                        // Check all elements
                         auto& arr = std::get<std::vector<typed_value>>(cell.val);
                         value_type expected_elem_type = detail::array_element_type(type);
 
@@ -2121,7 +2236,6 @@ namespace arf
                 }
                 else
                 {
-                    // Scalar - check type match
                     if (cell.held_type() != type)
                     {
                         cell_valid = false;
@@ -2129,26 +2243,50 @@ namespace arf
                 }
             }
 
-            // Update cell state
+            // Update cell state (but don't touch row contamination yet)
             if (!cell_valid)
             {
                 cell.semantic      = semantic_state::invalid;
-                cell.contamination = contamination_state::clean; // cell clean, row contaminated
-                rn->contamination  = contamination_state::contaminated;
-
-                doc_.mark_row_contaminated(rid);
+                cell.contamination = contamination_state::clean;
                 any_invalid = true;
             }
             else
             {
                 cell.semantic      = semantic_state::valid;
                 cell.contamination = contamination_state::clean;
-
-                // Try to clear row contamination (might still be contaminated from other cells)
-                doc_.request_clear_contamination(rid);
             }
 
             rn->is_edited = true;
+        }
+
+        // PHASE 2: Re-evaluate entire row contamination states
+        for (auto rid : tbl->rows)
+        {
+            auto* rn = doc_.get_node(rid);
+            if (!rn) continue;
+            
+            // Check ALL cells in this row
+            bool row_has_invalid = false;
+            for (auto& cell : rn->cells)
+            {
+                if (cell.semantic == semantic_state::invalid ||
+                    cell.contamination == contamination_state::contaminated)
+                {
+                    row_has_invalid = true;
+                    break;
+                }
+            }
+            
+            if (row_has_invalid)
+            {
+                rn->contamination = contamination_state::contaminated;
+                doc_.mark_row_contaminated(rid);
+            }
+            else
+            {
+                rn->contamination = contamination_state::clean;
+                doc_.request_clear_contamination(rid);
+            }
         }
 
         return !any_invalid;
