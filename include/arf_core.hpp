@@ -39,6 +39,7 @@ namespace arf
     template <typename Tag>
     struct id
     {
+        typedef Tag tag_type;
         typedef size_t value_type;
 
         value_type val;

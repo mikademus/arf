@@ -7,6 +7,7 @@
 #define ARF_SERIALIZER_HPP
 
 #include "arf_document.hpp"
+#include <charconv>
 #include <ostream>
 #include <cassert>
 

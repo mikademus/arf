@@ -6,6 +6,7 @@
 //#include "arf_query_tests.hpp"
 #include "arf_editor_tests.hpp"
 //#include "arf_serializer_tests.hpp"
+#include "arf_integration_tests.hpp"
 //#include "arf_value_semantics_tests.hpp"
 #include <cstring>
 #include <iostream>
@@ -59,6 +60,10 @@ int main()
 
     #ifdef ARF_TESTS_SERIALIZER__ 
         run_tests("Serialization", run_seriealizer_tests);
+    #endif
+
+    #ifdef ARF_TESTS_COMPREHENSIVE__ 
+        run_tests("Coprehensive", run_integration_tests);
     #endif
 
     //run_value_semantics_tests();

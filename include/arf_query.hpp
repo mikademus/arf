@@ -402,6 +402,28 @@ namespace arf
         query_result<bool>        as_bool() const noexcept; // conversion disallowed
         query_result<std::string> as_string(bool convert = false) const noexcept;
 
+        // Get ID of first queried item (convenience method)
+        template<typename Tag>
+        std::optional<id<Tag>> id_as() const
+        {
+            if (locations_.empty()) return std::nullopt;
+            
+            reflect::inspect_context ictx{.doc = doc_};
+            auto insp = reflect::inspect(ictx, locations_.front().addr);
+            
+            if (!std::holds_alternative<document::view_for_t<Tag>>(insp.item))
+                return std::nullopt;
+            
+            return std::get<document::view_for_t<Tag>>(insp.item).id();
+        }
+        std::optional<key_id>       key_id() const       { return id_as<key_tag>(); }
+        std::optional<table_id>     table_id() const     { return id_as<table_tag>(); }
+        std::optional<category_id>  category_id() const  { return id_as<category_tag>(); }
+        std::optional<table_row_id> row_id() const       { return id_as<table_row_tag>(); }
+        std::optional<column_id>    column_id() const    { return id_as<table_column_tag>(); }
+        //std::optional<comment_id>   comment_id() const   { return id_as<comment_tag>(); }
+        //std::optional<paragraph_id> paragraph_id() const { return id_as<paragraph_tag>(); }        
+
         query_result<std::vector<int64_t>>     as_integers() const noexcept;
         query_result<std::vector<double>>      as_reals() const noexcept;
         query_result<std::vector<std::string>> as_strings() const noexcept;

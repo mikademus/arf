@@ -18,6 +18,17 @@ namespace arf
         {}
 
     //============================================================
+    // Categories
+    //============================================================
+
+        bool erase_category(category_id id);
+
+        category_id append_category( category_id parent, std::string_view name );
+
+        template<typename Tag> category_id insert_category_before( id<Tag> anchor, std::string_view name );
+        template<typename Tag> category_id insert_category_after( id<Tag> anchor, std::string_view name );
+
+    //============================================================
     // Key / value manipulation
     //============================================================
 
@@ -141,11 +152,20 @@ namespace arf
         // Warning: power-user territory and should be avoided in 
         // general use. 
         template<typename Tag>
-        typename document::to_node_type<Tag>::type* 
+        typename document::node_for<Tag>::type* 
         _unsafe_access_internal_document_container( id<Tag> id_ )
         {
             return doc_.get_node(id_);
         }
+
+
+        typedef std::variant<key_id, table_id, comment_id, paragraph_id> category_anchor;
+
+        void move_child_before( category_anchor which, category_anchor anchor );
+        void move_child_after( category_anchor which, category_anchor anchor );
+
+        void move_row_before( table_row_id row, table_row_id anchor );
+        void move_row_after( table_row_id row, table_row_id anchor );
 
     private:
 
@@ -161,10 +181,7 @@ namespace arf
         document::source_item_ref const* locate_anchor(id<Tag> anchor) const noexcept;
 
         // Convert raw value to typed_value with validation
-        typed_value make_array_element( 
-            value val, 
-            value_type expected_type, 
-            value_locus origin);
+        typed_value make_array_element( value val, value_type expected_type, value_locus origin);
         
         // Validate and set array, mark contamination if needed
         void update_array_and_check(
@@ -174,97 +191,28 @@ namespace arf
             std::function<void()> try_clear);        
 
         template<typename Tag>
-        table_row_id insert_row_impl(
-            id<Tag> anchor,
-            std::vector<value> cells,
-            insert_direction dir);
+        table_row_id insert_row_impl( id<Tag> anchor, std::vector<value> cells, insert_direction dir);
 
         template<typename EntityId, typename NodeType>
-        bool erase_category_child(
-            EntityId id,
-            std::vector<NodeType>& storage);
+        bool erase_category_child( EntityId id, std::vector<NodeType>& storage);
 
-        key_id create_key_node_only(
-            category_id where,
-            std::string_view name,
-            value v,
-            bool untyped);
-
-        table_id create_table_node_only(
-            category_id where,
-            std::vector<std::pair<std::string, std::optional<value_type>>> columns);
-
-        column_id create_column_node_only( 
-            table_id table, 
-            std::string_view name, 
-            std::optional<value_type> declared_type );
-
-        table_row_id create_row_node_only(
-            table_id table,
-            std::vector<typed_value> cells);
-
-        comment_id create_comment_node_only(
-            category_id where,
-            std::string_view text);
-
-        paragraph_id create_paragraph_node_only(
-            category_id where,
-            std::string_view text);
+        category_id  create_category_node_only( category_id parent, std::string_view name);
+        key_id       create_key_node_only( category_id where, std::string_view name, value v, bool untyped);
+        table_id     create_table_node_only( category_id where, std::vector<std::pair<std::string, std::optional<value_type>>> columns);
+        column_id    create_column_node_only( table_id table, std::string_view name, std::optional<value_type> declared_type);
+        table_row_id create_row_node_only( table_id table, std::vector<typed_value> cells);
+        comment_id   create_comment_node_only( category_id where, std::string_view text);
+        paragraph_id create_paragraph_node_only( category_id where, std::string_view text);
 
         // Generic insertion helper - creates node, adds to semantic collection, inserts at position
         template<typename EntityId, typename Tag, typename CreateFn>
-        EntityId insert_category_child_before_impl(
-            id<Tag> anchor,
-            CreateFn&& create_fn)
-        {
-            auto* ref = locate_anchor(anchor);
-            if (!ref) return invalid_id<typename EntityId::tag_type>();
-
-            auto* anchor_node = doc_.get_node(anchor);
-            if (!anchor_node) return invalid_id<typename EntityId::tag_type>();
-
-            category_id where = anchor_node->owner;
-
-            // Create node without touching ordered_items
-            EntityId id = std::invoke(std::forward<CreateFn>(create_fn), where);
-            if (!valid(id)) return id;
-
-            auto* cat = doc_.get_node(where);
-            auto it = std::ranges::find(cat->ordered_items, *ref);
-
-            // Insert ONCE at correct position
-            cat->ordered_items.insert(it, {id});
-
-            return id;
-        }
+        EntityId insert_category_child_before_impl( id<Tag> anchor, CreateFn&& create_fn);
 
         template<typename EntityId, typename Tag, typename CreateFn>
-        EntityId insert_category_child_after_impl(
-            id<Tag> anchor,
-            CreateFn&& create_fn)
-        {
-            auto* ref = locate_anchor(anchor);
-            if (!ref) return invalid_id<typename EntityId::tag_type>();
+        EntityId insert_category_child_after_impl( id<Tag> anchor, CreateFn&& create_fn);
 
-            auto* anchor_node = doc_.get_node(anchor);
-            if (!anchor_node) return invalid_id<typename EntityId::tag_type>();
-
-            category_id where = anchor_node->owner;
-
-            // Create node without touching ordered_items
-            EntityId id = std::invoke(std::forward<CreateFn>(create_fn), where);
-            if (!valid(id)) return id;
-
-            auto* cat = doc_.get_node(where);
-            auto it = std::ranges::find(cat->ordered_items, *ref);
-            
-            if (it != cat->ordered_items.end()) ++it;
-
-            // Insert ONCE at correct position
-            cat->ordered_items.insert(it, {id});
-
-            return id;
-        }            
+        template<typename EntityId, typename AnchorTag>
+        bool move_before(EntityId item, id<AnchorTag> anchor);   
     };
 
 //================================================================================================================
@@ -341,6 +289,105 @@ namespace arf
         
         return elem;
     }
+
+    template<typename EntityId, typename Tag, typename CreateFn>
+    EntityId editor::insert_category_child_before_impl(
+        id<Tag> anchor,
+        CreateFn&& create_fn)
+    {
+        auto* ref = locate_anchor(anchor);
+        if (!ref) return invalid_id<typename EntityId::tag_type>();
+
+        auto* anchor_node = doc_.get_node(anchor);
+        if (!anchor_node) return invalid_id<typename EntityId::tag_type>();
+
+        category_id where = anchor_node->owner;
+
+        // Create node without touching ordered_items
+        EntityId id = std::invoke(std::forward<CreateFn>(create_fn), where);
+        if (!valid(id)) return id;
+
+        auto* cat = doc_.get_node(where);
+        auto it = std::ranges::find(cat->ordered_items, *ref);
+
+        // Insert ONCE at correct position
+        cat->ordered_items.insert(it, {id});
+
+        return id;
+    }
+
+    template<typename EntityId, typename Tag, typename CreateFn>
+    EntityId editor::insert_category_child_after_impl(
+        id<Tag> anchor,
+        CreateFn&& create_fn)
+    {
+        auto* ref = locate_anchor(anchor);
+        if (!ref) return invalid_id<typename EntityId::tag_type>();
+
+        auto* anchor_node = doc_.get_node(anchor);
+        if (!anchor_node) return invalid_id<typename EntityId::tag_type>();
+
+        category_id where = anchor_node->owner;
+
+        // Create node without touching ordered_items
+        EntityId id = std::invoke(std::forward<CreateFn>(create_fn), where);
+        if (!valid(id)) return id;
+
+        auto* cat = doc_.get_node(where);
+        auto it = std::ranges::find(cat->ordered_items, *ref);
+        
+        if (it != cat->ordered_items.end()) ++it;
+
+        // Insert ONCE at correct position
+        cat->ordered_items.insert(it, {id});
+
+        return id;
+    }
+
+    template<typename EntityId, typename AnchorTag>
+    bool editor::move_before(EntityId item, id<AnchorTag> anchor)
+    {
+        // 1. Verify item and anchor exist
+        auto* item_node = doc_.get_node(item);
+        auto* anchor_node = doc_.get_node(anchor);
+        if (!item_node || !anchor_node) return false;
+        
+        // 2. Verify both in same category
+        if (item_node->owner != anchor_node->owner) return false;
+        
+        auto* cat = doc_.get_node(item_node->owner);
+        if (!cat) return false;
+        
+        // 3. Find both in ordered_items
+        auto item_it = std::ranges::find(
+            cat->ordered_items,
+            document::source_item_ref{item}
+        );
+        
+        auto anchor_it = std::ranges::find(
+            cat->ordered_items,
+            document::source_item_ref{anchor}
+        );
+        
+        if (item_it == cat->ordered_items.end() || 
+            anchor_it == cat->ordered_items.end()) 
+            return false;
+        
+        // 4. Remove from current position
+        auto item_ref = *item_it;
+        cat->ordered_items.erase(item_it);
+        
+        // 5. Re-find anchor (iterator invalidated)
+        anchor_it = std::ranges::find(
+            cat->ordered_items,
+            document::source_item_ref{anchor}
+        );
+        
+        // 6. Insert before anchor
+        cat->ordered_items.insert(anchor_it, item_ref);
+        
+        return true;
+    }        
 
     void editor::update_array_and_check(
         typed_value& target_array,
@@ -584,6 +631,120 @@ namespace arf
         doc_.rows_.push_back(std::move(row));
 
         return id;
+    }
+
+//============================================================
+// Categories
+//============================================================
+
+    inline category_id editor::create_category_node_only(
+        category_id parent,
+        std::string_view name)
+    {
+        auto* parent_node = doc_.get_node(parent);
+        if (!parent_node) return invalid_id<category_tag>();
+
+        category_id id = doc_.create_category_id();
+
+        document::category_node cn;
+        cn.id     = id;
+        cn.name   = std::string(name);
+        cn.parent = parent;
+        cn.creation = creation_state::generated;
+        cn.is_edited = true;
+
+        doc_.categories_.push_back(std::move(cn));
+        
+        // Re-acquire parent pointer after vector modification
+        parent_node = doc_.get_node(parent);
+        parent_node->children.push_back(id);
+
+        return id;
+    }
+
+    inline category_id editor::append_category(
+        category_id parent,
+        std::string_view name)
+    {
+        category_id id = create_category_node_only(parent, name);
+        if (!valid(id)) return id;
+
+        auto* parent_node = doc_.get_node(parent);
+        parent_node->ordered_items.push_back(document::source_item_ref{id});
+
+        return id;
+    }
+
+    template<typename Tag>
+    inline category_id editor::insert_category_before(
+        id<Tag> anchor,
+        std::string_view name)
+    {
+        return insert_category_child_before_impl<category_id>(
+            anchor,
+            [this, name](category_id parent) {
+                return create_category_node_only(parent, name);
+            }
+        );
+    }
+
+    template<typename Tag>
+    inline category_id editor::insert_category_after(
+        id<Tag> anchor,
+        std::string_view name)
+    {
+        return insert_category_child_after_impl<category_id>(
+            anchor,
+            [this, name](category_id parent) {
+                return create_category_node_only(parent, name);
+            }
+        );
+    }
+
+    inline bool editor::erase_category(category_id id)
+    {
+        auto* cn = doc_.get_node(id);
+        if (!cn) return false;
+
+        // Cannot erase root category
+        if (id == category_id{0}) return false;
+
+        auto* parent = doc_.get_node(cn->parent);
+        if (!parent) return false;
+
+        // Check if category has children
+        if (!cn->children.empty())
+        {
+            // For now, don't allow erasing non-empty categories
+            // Could implement cascade deletion or reparenting in the future
+            return false;
+        }
+
+        // Check if category has content (keys, tables, etc.)
+        if (!cn->keys.empty() || !cn->tables.empty() || !cn->ordered_items.empty())
+        {
+            // Category must be empty to erase
+            return false;
+        }
+
+        // Remove from parent's children list
+        std::erase(parent->children, id);
+
+        // Remove from parent's ordered_items
+        std::erase_if(parent->ordered_items, [&](auto const& r) {
+            return std::holds_alternative<category_id>(r.id)
+                && std::get<category_id>(r.id) == id;
+        });
+
+        // Remove from document storage
+        auto& categories = doc_.categories_;
+        categories.erase(
+            std::ranges::find_if(categories, [&](auto const& c) {
+                return c.id == id;
+            })
+        );
+
+        return true;
     }
 
 //============================================================

@@ -332,6 +332,187 @@ inline bool column_type_change_invalidates_rows_typed_col()
     return true;
 }
 
+// Test insertion ordering
+inline bool insert_key_maintains_order()
+{
+    auto ctx = load("a = 1\nc = 3\n");
+    editor ed(ctx.document);
+    
+    auto key_a = ctx.document.key("a");
+    ed.insert_key_after(key_a->id(), "b", 2);
+    
+    // Verify order by walking ordered_items
+    auto cat = ctx.document.root();
+    auto* cat_node = ed._unsafe_access_internal_document_container(cat->id());
+    
+    std::vector<std::string> names;
+    for (auto const& item : cat_node->ordered_items)
+    {
+        if (std::holds_alternative<key_id>(item.id))
+        {
+            auto kid = std::get<key_id>(item.id);
+            auto k = ctx.document.key(kid);
+            if (k) names.push_back(std::string(k->name()));
+        }
+    }
+    
+    EXPECT(names.size() == 3, "Wrong key count");
+    EXPECT(names[0] == "a", "Order wrong: first should be 'a'");
+    EXPECT(names[1] == "b", "Order wrong: second should be 'b'");
+    EXPECT(names[2] == "c", "Order wrong: third should be 'c'");
+    
+    return true;
+}
+
+// Test erasure
+bool erase_key_test()
+{
+    auto ctx = load("a = 1\nb = 2\nc = 3\n");
+    editor ed(ctx.document);
+    
+    auto key_b = ctx.document.key("b");
+    bool result = ed.erase_key(key_b->id());
+    
+    EXPECT(result == true, "Erase should succeed");
+    EXPECT(!ctx.document.key("b").has_value(), "Key should be gone");
+    EXPECT(ctx.document.key_count() == 2, "Count wrong");
+    
+    return true;
+}
+
+// Test comment/paragraph
+bool comment_and_paragraph_operations()
+{
+    document doc;
+    doc.create_root();
+    editor ed(doc);
+    
+    auto root_id = doc.root()->id();
+    
+    auto cid = ed.append_comment(root_id, "// test");
+    auto pid = ed.append_paragraph(root_id, "Some text");
+    
+    EXPECT(valid(cid), "Comment creation failed");
+    EXPECT(valid(pid), "Paragraph creation failed");
+    
+    ed.set_comment(cid, "// modified");
+    auto* cn = ed._unsafe_access_internal_document_container(cid);
+    EXPECT(cn->text == "// modified", "Comment not updated");
+    
+    return true;
+}
+
+// Test table insertion
+bool insert_table_test()
+{
+    auto ctx = load("a = 1\n");
+    editor ed(ctx.document);
+    
+    auto root = ctx.document.root();
+    auto tid = ed.append_table(root->id(), std::vector<std::string>{"x", "y"});
+    
+    EXPECT(valid(tid), "Table creation failed");
+    auto tbl = ctx.document.table(tid);
+    EXPECT(tbl->column_count() == 2, "Column count wrong");
+    
+    return true;
+}
+
+// Test column operations
+bool column_insertion_and_deletion()
+{
+    auto ctx = load("# a\n  1\n");
+    editor ed(ctx.document);
+    
+    auto tbl = ctx.document.table(table_id{0});
+    auto col_a = tbl->column("a");
+    
+    // Insert column after a
+    auto col_b = ed.insert_column_after(col_a->id(), "b", value_type::integer);
+    EXPECT(valid(col_b), "Column insert failed");
+    EXPECT(tbl->column_count() == 2, "Column count wrong");
+    
+    // Verify row was expanded
+    auto row = ctx.document.row(tbl->rows()[0]);
+    EXPECT(row->cells().size() == 2, "Row not expanded");
+    
+    // Erase column
+    bool erased = ed.erase_column(col_b);
+    EXPECT(erased, "Column erase failed");
+    EXPECT(tbl->column_count() == 1, "Column still present");
+    
+    return true;
+}
+
+inline bool minimal_create_categories()
+{
+    document doc;
+    doc.create_root();
+    editor ed(doc);
+
+    EXPECT(doc.categories().size() == 1, "Document with only root should have 1 category");
+    auto r = doc.root();
+    EXPECT(r.has_value(), "Root not found");
+    auto cid = ed.append_category(r->id(), "subcat");
+    EXPECT(doc.categories().size() == 2, "Document should have 2 categories");
+    auto ch = doc.category(cid);
+    EXPECT(ch.has_value(), "Just created category should exist");
+    EXPECT(ch->name() == "subcat", "Created category has wrong name");
+    auto p = ch->parent();
+    EXPECT(p.has_value(), "Child should have a valid parent");
+    EXPECT(p->is_root(), "Subcategory should be a child of root");
+
+    return true;
+}
+
+inline bool category_creation_and_nesting()
+{
+    document doc;
+    doc.create_root();
+    editor ed(doc);
+    
+    auto root = doc.root()->id();
+    auto orig_count = doc.category_count();
+    
+    // Create top-level category (child of root)
+    auto cat1 = ed.append_category(root, "settings");
+    EXPECT(valid(cat1), "Category creation failed");
+    EXPECT(doc.category_count() ==  orig_count + 1, "Wrong category count");
+    
+    // Create subcategory (child of non-root category)
+    auto sub1 = ed.append_category(cat1, "advanced");
+    EXPECT(valid(sub1), "Subcategory creation failed");
+    EXPECT(doc.category_count() ==  orig_count + 2, "Wrong category count");
+
+    auto sub = doc.category(sub1);
+    EXPECT(sub.has_value(), "Created category not found");
+    EXPECT(sub->parent()->id() == cat1, "Wrong parent");
+    
+    // Verify structure
+    auto cat1_node = ed._unsafe_access_internal_document_container(cat1);
+    EXPECT(cat1_node->name == "settings", "Wrong node name");
+    EXPECT(cat1_node->children.size() == 1, "Child not added");
+    EXPECT(cat1_node->children[0] == sub1, "Wrong child");
+    
+    // Verify parent relationships
+    auto sub1_node = ed._unsafe_access_internal_document_container(sub1);
+    EXPECT(sub1_node->parent == cat1, "Wrong parent for subcategory");
+    
+    auto cat1_view = doc.category(cat1);
+    EXPECT(cat1_view->parent()->is_root(), "Wrong parent for top-level category");
+    
+    // Cannot delete non-empty category
+    bool cannot_delete = ed.erase_category(cat1);
+    EXPECT(!cannot_delete, "Should not delete category with children");
+    
+    // Can delete empty category
+    auto empty_cat = ed.append_category(root, "empty");
+    bool can_delete = ed.erase_category(empty_cat);
+    EXPECT(can_delete, "Should delete empty category");
+    
+    return true;
+}
+
 //============================================================================
 // Test Runner
 //============================================================================
@@ -360,6 +541,15 @@ inline void run_editor_tests()
     RUN_TEST(invalid_array_contamination_key);
     RUN_TEST(column_type_change_invalidates_rows_untyped_col);
     RUN_TEST(column_type_change_invalidates_rows_typed_col);
+
+    SUBCAT("Insertion / deletion");
+    RUN_TEST(insert_key_maintains_order);
+    RUN_TEST(erase_key_test);
+    RUN_TEST(comment_and_paragraph_operations);
+    RUN_TEST(insert_table_test);
+    RUN_TEST(column_insertion_and_deletion);
+    RUN_TEST(minimal_create_categories);
+    RUN_TEST(category_creation_and_nesting);
 }
 
 }

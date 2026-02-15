@@ -89,7 +89,7 @@ namespace arf
     // Category access
     //------------------------------------------------------------------------
 
-        size_t category_count() const noexcept { return categories_.size(); }
+        size_t category_count() const noexcept;
         std::optional<category_view> root() const noexcept;
         std::optional<category_view> category(std::string_view name) const noexcept;
         std::optional<category_view> category(category_id id) const noexcept;
@@ -99,7 +99,7 @@ namespace arf
     // Table access
     //------------------------------------------------------------------------
 
-        size_t table_count() const noexcept { return tables_.size(); }
+        size_t table_count() const noexcept;
         std::optional<table_view> table(table_id id) const noexcept;    
         std::vector<table_view>   tables() const noexcept;
 
@@ -107,7 +107,7 @@ namespace arf
     // Column access
     //------------------------------------------------------------------------
 
-        size_t column_count() const noexcept { return columns_.size(); }
+        size_t column_count() const noexcept;
         std::optional<column_view> column(column_id id) const noexcept;
         std::vector<column_view>   columns() const noexcept;
 
@@ -115,7 +115,7 @@ namespace arf
     // Row access
     //------------------------------------------------------------------------
 
-        size_t row_count() const noexcept { return rows_.size(); }
+        size_t row_count() const noexcept;
         std::optional<table_row_view> row(table_row_id id) const noexcept;
         std::vector<table_row_view>   rows() const noexcept;
 
@@ -123,13 +123,13 @@ namespace arf
     // Key access
     //------------------------------------------------------------------------
 
-        size_t key_count() const noexcept { return keys_.size(); }
+        size_t key_count() const noexcept;
         std::optional<key_view> key(std::string_view name) const noexcept;
         std::optional<key_view> key(key_id id) const noexcept;
         std::vector<key_view>   keys() const noexcept;
 
-        size_t comment_count() const noexcept { return comments_.size(); }
-        size_t paragraph_count() const noexcept { return paragraphs_.size(); }
+        size_t comment_count() const noexcept;
+        size_t paragraph_count() const noexcept;
 
         category_id create_root();
         category_id create_category(category_id id, std::string_view name, category_id parent);
@@ -174,24 +174,31 @@ namespace arf
         table_row_id  create_row_id()        noexcept  { return next_row_id_++; }
         column_id     create_column_id()     noexcept  { return next_column_id_++; }
 
-    //------------------------------------------------------------------------
-    // Definitions for internal storage nodes (fully normalised)
-    //------------------------------------------------------------------------
-
         enum class category_close_form
         {
             shorthand,   // "/"
             named        // "/category"
         };
 
-        struct category_close_marker
-        {
-            category_id         which;
-            category_close_form form;
+    //------------------------------------------------------------------------
+    // Types for internal storage nodes (fully normalised)
+    //------------------------------------------------------------------------
 
-            bool operator==(category_close_marker const & rhs) const noexcept { return which == rhs.which; }
-        };
+        struct category_close_marker;
+        struct category_node;
+        struct table_node;
+        struct column_node;
+        struct row_node;
+        struct key_node;
+        struct comment_node;
+        struct paragraph_node;  
 
+    //------------------------------------------------------------------------
+    // Types for source order tracking
+    //------------------------------------------------------------------------
+
+        // Entities participating in source order tracking 
+        //----------------------------------------------------------
         using source_id = std::variant<
             key_id,
             category_id,            // category open
@@ -202,121 +209,31 @@ namespace arf
             paragraph_id
         >;
 
-        struct source_item_ref
-        {
-            source_id id;
+        // Used to track the authored order of document entities 
+        //----------------------------------------------------------
+        struct source_item_ref;
 
-            bool operator==(source_item_ref const & rhs) const noexcept 
-            {
-                if (id.index() != rhs.id.index())
-                    return false;
+        // Translate tag (ID) to client view type
+        //----------------------------------------------------------
+        template<typename Tag> struct view_for;
 
-                return std::visit([&rhs](auto const & lhs_val)
-                {
-                    using T = std::decay_t<decltype(lhs_val)>;
-                    return lhs_val.operator==(std::get<T>(rhs.id));
-                }, id);                
-            }
-        };
+        template<> struct view_for<key_tag>          { typedef key_view         type; };
+        template<> struct view_for<table_tag>        { typedef table_view       type; };
+        template<> struct view_for<category_tag>     { typedef category_view    type; };
+        template<> struct view_for<table_row_tag>    { typedef table_row_view   type; };
+        template<> struct view_for<table_column_tag> { typedef column_view      type; };
+        //template<> struct view_for<comment_tag>      { typedef void type; };//comment_view type; };
+        //template<> struct view_for<paragraph_tag>    { typedef void type; };//paragraph_view type; };
 
-        struct category_node : node<false, true>
-        {
-            typedef category_id id_type;
-            id_type _id() const noexcept { return id; }
-            std::string_view _name() const noexcept { return name; }
-            
-            category_id                  id;
-            std::string                  name;
-            category_id                  parent;
-            std::vector<category_id>     children;
-            std::vector<table_id>        tables;
-            std::vector<key_id>          keys;
-            std::vector<source_item_ref> ordered_items;
+        template<typename Tag>
+        using view_for_t = typename view_for<Tag>::type;
 
-            // Authorship metadata, instead of source_event_index:
-            std::optional<size_t>        source_event_index_open;   // Category open event
-            std::optional<size_t>        source_event_index_close;  // Category close event (if explicit)
-        };
-
-        struct table_node : node<>
-        {
-            typedef table_id id_type;
-            id_type _id() const noexcept { return id; }
-            std::string_view _name() const noexcept = delete;
-            
-            table_id                     id;
-            category_id                  owner;
-            std::vector<column_id>       columns;
-            std::vector<table_row_id>    rows;          // semantic collection (all rows)
-            std::vector<source_item_ref> ordered_items; // authored order (rows + comments + paragraphs + subcategories)
-        };
-
-        struct column_node : node<true, false>
-        {
-            typedef column_id id_type;
-            id_type _id() const noexcept { return col.id; }
-            std::string_view _name() const noexcept { return col.name; }
-            value_type _type() const noexcept { return col.type; }
-            
-            struct column   col;
-            table_id        table;
-            category_id     owner;
-        };
-
-        struct row_node : node<>
-        {
-            typedef table_row_id id_type;
-            id_type _id() const noexcept { return id; }
-            std::string _name() const noexcept
-            {
-                if (cells.empty()) return "";
-                auto const & cell = cells.front();
-                return cell.value_to_string();
-            }
-
-            table_row_id             id;
-            table_id                 table;
-            category_id              owner;
-            std::vector<typed_value> cells;
-        };
-
-        struct key_node : node<>
-        {
-            typedef key_id id_type;
-            id_type _id() const noexcept { return id; }
-            std::string_view _name() const noexcept { return name; }
-            
-            key_id               id;
-            std::string          name;
-            category_id          owner;
-            value_type           type;
-            type_ascription      type_source;
-            typed_value          value;
-        };
-
-        struct comment_node : node<>
-        {
-            typedef comment_id id_type;
-            id_type _id() const noexcept { return id; }
-
-            comment_id  id;
-            std::string text;   // verbatim, may be multi-line, includes "//" and preserves leading whitespace and line breaks
-            category_id owner {invalid_id<category_tag>()};
-        };
-
-        struct paragraph_node : node<>
-        {
-            typedef paragraph_id id_type;
-            id_type _id() const noexcept { return id; }
-
-            paragraph_id id;
-            std::string  text;  // verbatim, may be multi-line, preserves leading whitespace and line breaks
-            category_id  owner {invalid_id<category_tag>()} ;
-        };    
-        
     private:
 
-        category_id   next_category_id_   = category_id {0};
+        // Entity IDs are guaranteed to be monotonic without reuse.
+        // The document controls the creation of IDs.
+        //----------------------------------------------------------
+        category_id   next_category_id_   = category_id {1}; // ID 0 is reserved for root
         key_id        next_key_id_        = key_id {0};
         comment_id    next_comment_id_    = comment_id {0};
         paragraph_id  next_paragraph_id_  = paragraph_id {0};
@@ -324,19 +241,27 @@ namespace arf
         table_row_id  next_row_id_        = table_row_id {0};
         column_id     next_column_id_     = column_id {0};
 
-        template<typename T> struct to_node_type;
-        template<> struct to_node_type<category_tag>     { typedef category_node type; };
-        template<> struct to_node_type<key_tag>          { typedef key_node type; };
-        template<> struct to_node_type<table_tag>        { typedef table_node type; };
-        template<> struct to_node_type<table_row_tag>    { typedef row_node type; };
-        template<> struct to_node_type<table_column_tag> { typedef column_node type; };
-        template<> struct to_node_type<comment_tag>      { typedef comment_node type; };
-        template<> struct to_node_type<paragraph_tag>    { typedef paragraph_node type; };
+        // Translate tag (ID) to internal node storage type
+        //----------------------------------------------------------
+        template<typename Tag> struct node_for;
 
+        template<> struct node_for<category_tag>     { typedef category_node type; };
+        template<> struct node_for<key_tag>          { typedef key_node type; };
+        template<> struct node_for<table_tag>        { typedef table_node type; };
+        template<> struct node_for<table_row_tag>    { typedef row_node type; };
+        template<> struct node_for<table_column_tag> { typedef column_node type; };
+        template<> struct node_for<comment_tag>      { typedef comment_node type; };
+        template<> struct node_for<paragraph_tag>    { typedef paragraph_node type; };
+
+        template<typename Tag>
+        using node_for_t = typename node_for<Tag>::type;
+        
+        // Convenience getter of internal node storage for a entity ID
+        //----------------------------------------------------------
         template<typename T>
-        constexpr typename document::to_node_type<T>::type* get_node( ::arf::id<T> id_ ) noexcept
+        constexpr typename document::node_for<T>::type* get_node( ::arf::id<T> id_ ) noexcept
         {
-            using NodeT = typename document::to_node_type<T>::type;
+            using NodeT = typename document::node_for<T>::type;
 
             auto find_id = [id_](std::vector<NodeT> & nodes) -> NodeT *
             {
@@ -355,8 +280,14 @@ namespace arf
             else static_assert(false, "Illegal ID");
         };        
         
+        // The source CST document from the parser
+        //----------------------------------------------------------
         std::unique_ptr<parse_context> source_context_;
 
+        
+        // The storage structures for the document data populated
+        // by the materialiser or editor
+        //----------------------------------------------------------
         std::vector<category_node>   categories_;
         std::vector<table_node>      tables_;
         std::vector<column_node>     columns_;
@@ -432,6 +363,131 @@ namespace arf
         const parse_context* get_source_context() const { return source_context_.get(); }
 #endif        
     };
+
+
+//========================================================================
+// Nodes
+//========================================================================
+
+        struct document::category_close_marker
+        {
+            category_id         which;
+            category_close_form form;
+
+            bool operator==(category_close_marker const & rhs) const noexcept { return which == rhs.which; }
+        };
+
+        struct document::source_item_ref
+        {
+            source_id id;
+
+            bool operator==(source_item_ref const & rhs) const noexcept 
+            {
+                if (id.index() != rhs.id.index())
+                    return false;
+
+                return std::visit([&rhs](auto const & lhs_val)
+                {
+                    using T = std::decay_t<decltype(lhs_val)>;
+                    return lhs_val.operator==(std::get<T>(rhs.id));
+                }, id);                
+            }
+        };
+
+        struct document::category_node : document::node<false, true>
+        {
+            typedef category_id id_type;
+            id_type _id() const noexcept { return id; }
+            std::string_view _name() const noexcept { return name; }
+            
+            category_id                  id;
+            std::string                  name;
+            category_id                  parent;
+            std::vector<category_id>     children;
+            std::vector<table_id>        tables;
+            std::vector<key_id>          keys;
+            std::vector<source_item_ref> ordered_items;
+
+            // Authorship metadata, instead of source_event_index:
+            std::optional<size_t>        source_event_index_open;   // Category open event
+            std::optional<size_t>        source_event_index_close;  // Category close event (if explicit)
+        };
+
+        struct document::table_node : document::node<>
+        {
+            typedef table_id id_type;
+            id_type _id() const noexcept { return id; }
+            std::string_view _name() const noexcept = delete;
+            
+            table_id                     id;
+            category_id                  owner;
+            std::vector<column_id>       columns;
+            std::vector<table_row_id>    rows;          // semantic collection (all rows)
+            std::vector<source_item_ref> ordered_items; // authored order (rows + comments + paragraphs + subcategories)
+        };
+
+        struct document::column_node : document::node<true, false>
+        {
+            typedef column_id id_type;
+            id_type _id() const noexcept { return col.id; }
+            std::string_view _name() const noexcept { return col.name; }
+            value_type _type() const noexcept { return col.type; }
+            
+            struct column   col;
+            table_id        table;
+            category_id     owner;
+        };
+
+        struct document::row_node : document::node<>
+        {
+            typedef table_row_id id_type;
+            id_type _id() const noexcept { return id; }
+            std::string _name() const noexcept
+            {
+                if (cells.empty()) return "";
+                auto const & cell = cells.front();
+                return cell.value_to_string();
+            }
+
+            table_row_id             id;
+            table_id                 table;
+            category_id              owner;
+            std::vector<typed_value> cells;
+        };
+
+        struct document::key_node : document::node<>
+        {
+            typedef key_id id_type;
+            id_type _id() const noexcept { return id; }
+            std::string_view _name() const noexcept { return name; }
+            
+            key_id               id;
+            std::string          name;
+            category_id          owner;
+            value_type           type;
+            type_ascription      type_source;
+            typed_value          value;
+        };
+
+        struct document::comment_node : document::node<>
+        {
+            typedef comment_id id_type;
+            id_type _id() const noexcept { return id; }
+
+            comment_id  id;
+            std::string text;   // verbatim, may be multi-line, includes "//" and preserves leading whitespace and line breaks
+            category_id owner {invalid_id<category_tag>()};
+        };
+
+        struct document::paragraph_node : document::node<>
+        {
+            typedef paragraph_id id_type;
+            id_type _id() const noexcept { return id; }
+
+            paragraph_id id;
+            std::string  text;  // verbatim, may be multi-line, preserves leading whitespace and line breaks
+            category_id  owner {invalid_id<category_tag>()} ;
+        };    
 
 //========================================================================
 // Views
@@ -562,6 +618,17 @@ namespace arf
 
     inline category_id document::create_category( category_id id, std::string_view name, category_id parent )
     {
+        // Only root have the ID 0 or an invalid parent ID. Either of
+        // these being explicitly set is interpreted as an attempt to
+        // create the root category.
+        if (id == category_id{0} || parent == invalid_id<category_tag>())
+        {
+            if (categories_.empty())
+                return create_root();
+
+            return invalid_id<category_tag>();
+        }
+
         category_node node;
         node.id     = id;
         node.name   = std::string(name);
@@ -876,6 +943,14 @@ namespace arf
 
         return category_view{ this, &categories_.front() };
     }
+
+    size_t document::category_count() const noexcept { return categories_.size(); }
+    size_t document::table_count() const noexcept { return tables_.size(); }
+    size_t document::column_count() const noexcept { return columns_.size(); }
+    size_t document::row_count() const noexcept { return rows_.size(); }
+    size_t document::key_count() const noexcept { return keys_.size(); }
+    size_t document::comment_count() const noexcept { return comments_.size(); }
+    size_t document::paragraph_count() const noexcept { return paragraphs_.size(); }
 
     namespace
     {
