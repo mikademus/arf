@@ -120,8 +120,95 @@ entities:
 ```
 This example is intentionally verbose, using explicit named closures inside a table to demonstrate scope. Shorthand syntax exists.
 
-### Flowing document with prose and data interwoven
+### Direct CSV-file replacement
+```
+  # sku      product_name         category     warehouse  qty   reorder  region
+    A1001    Gaming Mouse         electronics  seattle    245   50       us
+    A1002    Mechanical Keyboard  electronics  seattle    89    30       us
+    B2001    Office Chair         furniture    seattle    12    5        us
+    A1001    Gaming Mouse         electronics  toronto    67    20       canada
+    A1002    Mechanical Keyboard  electronics  toronto    34    15       canada
+    C3001    Standing Desk        furniture    toronto    8     3        canada
+    A1001    Gaming Mouse         electronics  cdmx       123   40       mexico
+    B2001    Office Chair         furniture    cdmx       45    10       mexico
+    D4001    Monitor Arm          accessories  cdmx       78    25       mexico
+```
 
+### Improved CSV-replacement with annotations
+```scala
+// Product Inventory - Q4 2025
+// Demonstrates Arf! as a CSV-replacement with hierarchy and annotations
+
+inventory:
+
+  Regional distribution breakdown across North American warehouses.
+  Stock levels updated daily. Negative values indicate backorders.
+
+  # sku      product_name         category     warehouse  qty   reorder
+    A1001    Gaming Mouse         electronics  seattle    245   50
+    A1002    Mechanical Keyboard  electronics  seattle    89    30
+    B2001    Office Chair         furniture    seattle    12    5
+
+  :canada
+    // Canadian warehouse - duties paid, CAD pricing
+    A1001    Gaming Mouse         electronics  toronto    67    20
+    A1002    Mechanical Keyboard  electronics  toronto    34    15
+    C3001    Standing Desk        furniture    toronto    8     3
+  /
+
+  :mexico  
+    // Mexican distribution center - peso pricing
+    A1001    Gaming Mouse         electronics  cdmx       123   40
+    B2001    Office Chair         furniture    cdmx       45    10
+    D4001    Monitor Arm          accessories  cdmx       78    25
+  /
+
+  Low stock items flagged for priority reorder.
+  Reorder threshold assumes 2-week lead time.
+
+/inventory
+```
+
+### Scientific dataset with annotations
+```scala
+// Experimental Results - Enzyme Kinetics Study
+// Demonstrates Arf! for research data with embedded methodology
+
+experiment:
+  study_id = EK-2025-042
+  enzyme = Lactate Dehydrogenase
+  temperature = 37°C
+  pH = 7.4
+
+  Substrate concentration varied from 0.1 to 10.0 mM.
+  Initial velocity measured via NADH absorbance at 340nm.
+  All measurements performed in triplicate.
+
+  # substrate_mM  velocity_uM_s  std_dev  n_replicates
+    0.1           2.3            0.12     3
+    0.5           8.7            0.34     3
+    1.0           15.2           0.45     3
+    2.0           24.8           0.52     3
+    5.0           38.1           0.61     3
+    10.0          42.3           0.58     3
+
+  Michaelis-Menten parameters calculated via non-linear regression:
+  Vmax = 45.2 ± 1.3 μM/s
+  Km = 1.8 ± 0.2 mM
+  R² = 0.998
+
+  :inhibitor_screen
+    // Competitive inhibition assay with known inhibitors
+    # compound       IC50_mM  inhibition_type
+      Oxamate       2.4      competitive
+      Gossypol      0.8      uncompetitive
+      FX11          0.3      non-competitive
+  /
+
+/experiment
+```
+
+### Flowing document with prose and data interwoven
 ```scala
 // Character Sheet - Theron Ashblade
 // Demonstrates Arf! as a literature-with-data format
