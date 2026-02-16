@@ -94,7 +94,7 @@ While other formats create complex problems that require complex parsers, Arf! p
 
 ```scala
 // Game settings and configuration
-// Demoinstrates Arf! used as .INI-replacement
+// Demonstrates Arf! used as .INI-replacement
 
 settings:
   version = 1.0.0
@@ -121,7 +121,7 @@ entities:
 This example is intentionally verbose, using explicit named closures inside a table to demonstrate scope. Shorthand syntax exists.
 
 ### Direct CSV-file replacement
-```
+```scala
   # sku      product_name         category     warehouse  qty   reorder  region
     A1001    Gaming Mouse         electronics  seattle    245   50       us
     A1002    Mechanical Keyboard  electronics  seattle    89    30       us
@@ -192,7 +192,7 @@ experiment:
     5.0           38.1           0.61     3
     10.0          42.3           0.58     3
 
-  Michaelis-Menten parameters calculated via non-linear regression:
+  Michaelis-Menten parameters calculated via non-linear regression
   Vmax = 45.2 ± 1.3 μM/s
   Km = 1.8 ± 0.2 mM
   R² = 0.998
@@ -596,10 +596,17 @@ Everything that is not Arf structure will be retained as paragraphs.
 ```
 
 **Characteristics:**
-- Anything not data, comment or structure is a paragraph 
+- Anything not data, comment or structure is prose kept as paragraphs 
 - Preserve authored order in serialization
 - Can appear anywhere: root, categories, between table rows
 - Multiple consecutive paragraph lines form logical blocks
+
+> [!NOTE]
+> **Design Philosophy:**
+> In most formats, structure is mandatory and prose is an afterthought (if allowed at all). 
+> Arf inverts this: prose is the default state, structure is what you opt into. 
+> This makes Arf naturally suited for documents where data lives within narrative context, 
+> not the other way around.
 
 **Common uses:**
 - Documenting configuration sections
