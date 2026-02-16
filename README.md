@@ -60,8 +60,8 @@ Examples of areas of particular suitability:
 - Complete syntax guide (in this document below)
 
 **C++ Implementation (0.3.0):**
-- [Query Interface](query_interface.md) — High-level data access and query DSL
-- [Query Syntax](query_dotpath_syntax.md) — Dot-path query expressions  
+- [Query Interface](docs/query_interface.md) — High-level data access and query DSL
+- [Query Syntax](docs/query_dotpath_syntax.md) — Dot-path query expressions  
 - API Reference — Inline documentation in header files
 
 **Getting Started:**
