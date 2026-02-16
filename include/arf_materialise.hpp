@@ -184,12 +184,12 @@ namespace
         {
             {"str", value_type::string},
             {"int", value_type::integer},
-            {"float", value_type::decimal},
+            {"float", value_type::floating_point},
             {"bool", value_type::boolean},
             {"date", value_type::date},
             {"str[]", value_type::string_array},
-            {"int[]", value_type::int_array},
-            {"float[]", value_type::float_array},
+            {"int[]", value_type::integer_array},
+            {"float[]", value_type::floating_point_array},
         };
 
         if (auto it = valid_types.find(s); it != valid_types.end())
@@ -235,7 +235,7 @@ namespace
         double d = std::strtod(s.data(), &fend);
         if (fend == s.data() + s.size())
         {
-            tv.type = value_type::decimal;
+            tv.type = value_type::floating_point;
             tv.val  = d;
             return tv;
         }
@@ -278,7 +278,7 @@ namespace
                 return static_cast<int64_t>(v);
             }
 
-            case value_type::decimal:
+            case value_type::floating_point:
             {
                 char* end = nullptr;
                 double v = std::strtod(s.data(), &end);
@@ -297,8 +297,8 @@ namespace
                 return std::nullopt;
 
             case value_type::string_array:
-            case value_type::int_array:
-            case value_type::float_array:
+            case value_type::integer_array:
+            case value_type::floating_point_array:
                 // Arrays are handled elsewhere; cell literal stays intact
                 return std::nullopt;
 
@@ -312,8 +312,8 @@ namespace
         switch (scalar)
         {
             case value_type::string:  return value_type::string_array;
-            case value_type::integer: return value_type::int_array;
-            case value_type::decimal: return value_type::float_array;
+            case value_type::integer: return value_type::integer_array;
+            case value_type::floating_point: return value_type::floating_point_array;
             default:                  return value_type::unresolved;
         }
     }
@@ -349,8 +349,8 @@ namespace
         tv.val = std::vector<typed_value>{};
         auto& values = std::get<std::vector<typed_value>>(tv.val);
 
-        const bool want_int   = declared_type == value_type::int_array;
-        const bool want_float = declared_type == value_type::float_array;
+        const bool want_int   = declared_type == value_type::integer_array;
+        const bool want_float = declared_type == value_type::floating_point_array;
         const bool want_str   = declared_type == value_type::string_array;
 
         bool array_contaminated = false;
@@ -400,10 +400,10 @@ namespace
             }
             else if (want_float)
             {
-                if (auto v = try_convert(part, value_type::decimal, loc, ctx.errors); v.has_value())
+                if (auto v = try_convert(part, value_type::floating_point, loc, ctx.errors); v.has_value())
                 {
                     elem.val           = std::get<double>(*v);
-                    elem.type          = value_type::decimal;
+                    elem.type          = value_type::floating_point;
                     elem.type_source   = type_ascription::declared;
                     elem.contamination = contamination_state::clean;
                 }
@@ -902,7 +902,7 @@ namespace
         if (!active_table_)
             return; // syntactically valid, semantically inert
 
-        auto rid = std::get<table_row_id>(ev.target);
+        auto rid = std::get<row_id>(ev.target);
         const auto& cst_row = cst_.rows[rid.val];
 
         auto it = doc_.find_node_by_id(doc_.tables_, *active_table_);
@@ -956,8 +956,8 @@ namespace
             tv.origin = value_locus::table_cell;
 
             if (col.type == value_type::string_array ||
-                col.type == value_type::int_array ||
-                col.type == value_type::float_array)
+                col.type == value_type::integer_array ||
+                col.type == value_type::floating_point_array)
             {
                 tv = coerce_array(literal, col.type, value_locus::table_cell, ev.loc, out_);
             }
@@ -1033,8 +1033,8 @@ namespace
 
         const bool target_is_array =
             target == value_type::string_array ||
-            target == value_type::int_array ||
-            target == value_type::float_array;
+            target == value_type::integer_array ||
+            target == value_type::floating_point_array;
 
         if (target_is_array)
         {

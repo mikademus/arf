@@ -1,13 +1,13 @@
 #include "arf_test_harness.hpp"
-//#include "arf_parser_tests.hpp"
+#include "arf_parser_tests.hpp"
 #include "arf_materialiser_tests.hpp"
-//#include "arf_document_structure_tests.hpp"
-//#include "arf_reflection_tests.hpp"
-//#include "arf_query_tests.hpp"
+#include "arf_document_structure_tests.hpp"
+#include "arf_reflection_tests.hpp"
+#include "arf_query_tests.hpp"
 #include "arf_editor_tests.hpp"
-//#include "arf_serializer_tests.hpp"
+#include "arf_serializer_tests.hpp"
 #include "arf_integration_tests.hpp"
-//#include "arf_value_semantics_tests.hpp"
+
 #include <cstring>
 #include <iostream>
 
@@ -63,10 +63,6 @@ int main()
     #endif
 
     #ifdef ARF_TESTS_COMPREHENSIVE__ 
-        run_tests("Coprehensive", run_integration_tests);
+        run_tests("Integration", run_integration_tests);
     #endif
-
-    //run_value_semantics_tests();
-
-    // unified reporting    
 }

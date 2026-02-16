@@ -419,8 +419,8 @@ namespace arf
         std::optional<key_id>       key_id() const       { return id_as<key_tag>(); }
         std::optional<table_id>     table_id() const     { return id_as<table_tag>(); }
         std::optional<category_id>  category_id() const  { return id_as<category_tag>(); }
-        std::optional<table_row_id> row_id() const       { return id_as<table_row_tag>(); }
-        std::optional<column_id>    column_id() const    { return id_as<table_column_tag>(); }
+        std::optional<row_id> row_id() const       { return id_as<row_tag>(); }
+        std::optional<column_id>    column_id() const    { return id_as<column_tag>(); }
         //std::optional<comment_id>   comment_id() const   { return id_as<comment_tag>(); }
         //std::optional<paragraph_id> paragraph_id() const { return id_as<paragraph_tag>(); }        
 
@@ -2199,7 +2199,7 @@ namespace arf
                 if (sv == "false" || sv == "0") { out = false; return true; }
                 return false;
             },
-            [&](auto) { return false; } // Fallback for decimals/others
+            [&](auto) { return false; } // Fallback for floating_point/others
         }, tv.val) || ([&]{ if(err) *err = query_issue_kind::conversion_failed; return false; }());
     }
 
@@ -2278,7 +2278,7 @@ namespace arf
 
     query_result<double> query_handle::as_real(bool convert) const noexcept
     {
-        return scalar_extract<value_type::decimal, double>(convert);
+        return scalar_extract<value_type::floating_point, double>(convert);
     }
 
     query_result<bool> query_handle::as_bool() const noexcept
@@ -2315,7 +2315,7 @@ namespace arf
         const_cast<query_handle*>(this)->flush_pending_axis_();
 
         query_issue_kind err;
-        if (auto v = common_extraction_checks<value_type::int_array>(&err); v != nullptr)
+        if (auto v = common_extraction_checks<value_type::integer_array>(&err); v != nullptr)
         {
             const auto& elems = std::get<std::vector<typed_value>>(v->val);
             std::vector<int64_t> out;
@@ -2334,13 +2334,13 @@ namespace arf
         const_cast<query_handle*>(this)->flush_pending_axis_();
 
         query_issue_kind err;
-        if (auto v = common_extraction_checks<value_type::float_array>(&err); v != nullptr)
+        if (auto v = common_extraction_checks<value_type::floating_point_array>(&err); v != nullptr)
         {
             const auto& elems = std::get<std::vector<typed_value>>(v->val);
             std::vector<double> out;
             out.reserve(elems.size());
             for (const auto& e : elems)
-                if (e.type == value_type::decimal)
+                if (e.type == value_type::floating_point)
                     out.push_back(std::get<double>(e.val));
             return out;
         }

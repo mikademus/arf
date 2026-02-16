@@ -143,7 +143,7 @@ namespace arf::tests
             EXPECT(k.has_value(), "The key should have been extracted");
             EXPECT(k->name() == "arr", "The key should be named arr");
             EXPECT(k->is_array(), "The key should be an array");
-            EXPECT(k->value().type == value_type::int_array, "The key should be an array of integers");
+            EXPECT(k->value().type == value_type::integer_array, "The key should be an array of integers");
             auto const & arr = std::get<std::vector<typed_value>>(k->value().val);
             EXPECT(arr.size() == 3, "The array's arity should be 3");
             EXPECT(arr.at(1).type == value_type::integer && std::get<std::int64_t>(arr.at(1).val) == 13, "arr[1] != 13");
@@ -449,7 +449,7 @@ namespace arf::tests
         EXPECT(q1.locations().size() == 2,"integer < integer failed");
 
         auto q2 = query(ctx.document, "npc").table(0).where(lt("hp", 10.5));
-        EXPECT(q2.locations().size() == 3, "integer < decimal failed");
+        EXPECT(q2.locations().size() == 3, "integer < floating point failed");
 
         return true;
     }    

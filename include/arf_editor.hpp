@@ -10,6 +10,9 @@
 
 namespace arf
 {
+    // Convenience method
+    document create_document();
+
     class editor
     {
     public:
@@ -93,12 +96,12 @@ namespace arf
 
     // Rows
     //----------------------------        
-        bool erase_row(table_row_id id);
+        bool erase_row(row_id id);
 
-        table_row_id append_row( table_id table, std::vector<value> cells );
+        row_id append_row( table_id table, std::vector<value> cells );
 
-        template<typename Tag> table_row_id insert_row_before(id<Tag> anchor, std::vector<value> cells);
-        template<typename Tag> table_row_id insert_row_after(id<Tag> anchor, std::vector<value> cells);
+        template<typename Tag> row_id insert_row_before(id<Tag> anchor, std::vector<value> cells);
+        template<typename Tag> row_id insert_row_after(id<Tag> anchor, std::vector<value> cells);
 
     // Columns
     //----------------------------        
@@ -111,8 +114,8 @@ namespace arf
 
     // Cells
     //----------------------------        
-        void set_cell_value( table_row_id row, column_id col, value val );
-        void set_cell_value( table_row_id row, column_id col, std::vector<value> arr );
+        void set_cell_value( row_id row, column_id col, value val );
+        void set_cell_value( row_id row, column_id col, std::vector<value> arr );
 
     //============================================================
     // Array element manipulation
@@ -129,12 +132,12 @@ namespace arf
 
     // Table specialisation
     //-------------------------------
-        void erase_array_element( table_row_id row, column_id col, size_t index );
+        void erase_array_element( row_id row, column_id col, size_t index );
 
-        void append_array_element( table_row_id row, column_id col, value val );
+        void append_array_element( row_id row, column_id col, value val );
 
-        void set_array_element( table_row_id row, column_id col, size_t index, value val );
-        void set_array_elements( table_row_id row, column_id col, std::vector<value> vals );
+        void set_array_element( row_id row, column_id col, size_t index, value val );
+        void set_array_elements( row_id row, column_id col, std::vector<value> vals );
 
     //============================================================
     // Type control (explicit, opt-in)
@@ -164,8 +167,8 @@ namespace arf
         void move_child_before( category_anchor which, category_anchor anchor );
         void move_child_after( category_anchor which, category_anchor anchor );
 
-        void move_row_before( table_row_id row, table_row_id anchor );
-        void move_row_after( table_row_id row, table_row_id anchor );
+        void move_row_before( row_id row, row_id anchor );
+        void move_row_after( row_id row, row_id anchor );
 
     private:
 
@@ -191,7 +194,7 @@ namespace arf
             std::function<void()> try_clear);        
 
         template<typename Tag>
-        table_row_id insert_row_impl( id<Tag> anchor, std::vector<value> cells, insert_direction dir);
+        row_id insert_row_impl( id<Tag> anchor, std::vector<value> cells, insert_direction dir);
 
         template<typename EntityId, typename NodeType>
         bool erase_category_child( EntityId id, std::vector<NodeType>& storage);
@@ -200,7 +203,7 @@ namespace arf
         key_id       create_key_node_only( category_id where, std::string_view name, value v, bool untyped);
         table_id     create_table_node_only( category_id where, std::vector<std::pair<std::string, std::optional<value_type>>> columns);
         column_id    create_column_node_only( table_id table, std::string_view name, std::optional<value_type> declared_type);
-        table_row_id create_row_node_only( table_id table, std::vector<typed_value> cells);
+        row_id create_row_node_only( table_id table, std::vector<typed_value> cells);
         comment_id   create_comment_node_only( category_id where, std::string_view text);
         paragraph_id create_paragraph_node_only( category_id where, std::string_view text);
 
@@ -261,8 +264,8 @@ namespace arf
         value_type expected_elem_type;
         switch (expected_type) 
         {
-            case value_type::int_array:    expected_elem_type = value_type::integer; break;
-            case value_type::float_array:  expected_elem_type = value_type::decimal; break;
+            case value_type::integer_array:    expected_elem_type = value_type::integer; break;
+            case value_type::floating_point_array:  expected_elem_type = value_type::floating_point; break;
             case value_type::string_array: expected_elem_type = value_type::string; break;
             default:
                 // Untyped array or unresolved
@@ -591,12 +594,12 @@ namespace arf
         return id;
     }
 
-    inline table_row_id editor::create_row_node_only(
+    inline row_id editor::create_row_node_only(
         table_id table,
         std::vector<typed_value> cells
     )
     {
-        table_row_id id = doc_.create_row_id();
+        row_id id = doc_.create_row_id();
 
         document::row_node row;
         row.id    = id;
@@ -1015,8 +1018,8 @@ namespace arf
             switch (elem_type)
             {
                 case value_type::string:  array_type = value_type::string_array; break;
-                case value_type::integer: array_type = value_type::int_array;    break;
-                case value_type::decimal: array_type = value_type::float_array;  break;
+                case value_type::integer: array_type = value_type::integer_array;    break;
+                case value_type::floating_point: array_type = value_type::floating_point_array;  break;
                 default:                  array_type = value_type::unresolved;   break;
             }
         }
@@ -1104,8 +1107,8 @@ namespace arf
                     switch (elem_type)
                     {
                         case value_type::string:  array_type = value_type::string_array; break;
-                        case value_type::integer: array_type = value_type::int_array;    break;
-                        case value_type::decimal: array_type = value_type::float_array;  break;
+                        case value_type::integer: array_type = value_type::integer_array;    break;
+                        case value_type::floating_point: array_type = value_type::floating_point_array;  break;
                         default:                  array_type = value_type::unresolved;   break;
                     }
                 }
@@ -1188,8 +1191,8 @@ namespace arf
                     switch (elem_type)
                     {
                         case value_type::string:  array_type = value_type::string_array; break;
-                        case value_type::integer: array_type = value_type::int_array;    break;
-                        case value_type::decimal: array_type = value_type::float_array;  break;
+                        case value_type::integer: array_type = value_type::integer_array;    break;
+                        case value_type::floating_point: array_type = value_type::floating_point_array;  break;
                         default:                  array_type = value_type::unresolved;   break;
                     }
                 }
@@ -1327,8 +1330,8 @@ namespace arf
             switch (elem_type)
             {
                 case value_type::string:  array_type = value_type::string_array; break;
-                case value_type::integer: array_type = value_type::int_array;    break;
-                case value_type::decimal: array_type = value_type::float_array;  break;
+                case value_type::integer: array_type = value_type::integer_array;    break;
+                case value_type::floating_point: array_type = value_type::floating_point_array;  break;
                 default:                  array_type = value_type::unresolved;   break;
             }
         }
@@ -1401,7 +1404,7 @@ namespace arf
 //-------------------------------
 
     void editor::append_array_element(
-        table_row_id row,
+        row_id row,
         column_id col,
         value val)
     {
@@ -1449,7 +1452,7 @@ namespace arf
     }
 
     void editor::set_array_element(
-        table_row_id row,
+        row_id row,
         column_id col,
         size_t index,
         value val)
@@ -1494,7 +1497,7 @@ namespace arf
     }
 
     void editor::set_array_elements(
-        table_row_id row,
+        row_id row,
         column_id col,
         std::vector<value> vals)
     {
@@ -1543,7 +1546,7 @@ namespace arf
     }
 
     void editor::erase_array_element(
-        table_row_id row,
+        row_id row,
         column_id col,
         size_t index)
     {
@@ -1583,15 +1586,15 @@ namespace arf
 // Tables
 //============================================================
 
-    table_row_id editor::append_row(
+    row_id editor::append_row(
         table_id table,
         std::vector<value> cells)
     {
         auto* tbl = doc_.get_node(table);
         if (!tbl) 
-            return invalid_id<table_row_tag>();
+            return invalid_id<row_tag>();
 
-        table_row_id id = doc_.create_row_id();
+        row_id id = doc_.create_row_id();
 
         document::row_node rn;
         rn.id    = id;
@@ -1606,7 +1609,7 @@ namespace arf
         {
             auto* col = doc_.get_node(tbl->columns[i]);
             if (!col)
-                return invalid_id<table_row_tag>(); // structural corruption
+                return invalid_id<row_tag>(); // structural corruption
 
             typed_value tv;
 
@@ -1666,35 +1669,35 @@ namespace arf
     }
 
     template<typename Tag>
-    table_row_id editor::insert_row_impl(
+    row_id editor::insert_row_impl(
         id<Tag> anchor,
         std::vector<value> cells,
         insert_direction dir)
     {
-        if constexpr (!std::is_same_v<Tag, table_row_tag>)
-            return invalid_id<table_row_tag>();
+        if constexpr (!std::is_same_v<Tag, row_tag>)
+            return invalid_id<row_tag>();
 
         auto* anchor_node = doc_.get_node(anchor);
-        if (!anchor_node) return invalid_id<table_row_tag>();
+        if (!anchor_node) return invalid_id<row_tag>();
 
         table_id table = anchor_node->table;
         auto* tbl = doc_.get_node(table);
-        if (!tbl) return invalid_id<table_row_tag>();
+        if (!tbl) return invalid_id<row_tag>();
 
-        table_row_id new_id = append_row(table, std::move(cells));
+        row_id new_id = append_row(table, std::move(cells));
         if (!valid(new_id)) return new_id;
 
         // Remove auto-appended entry
         std::erase(tbl->rows, new_id);
         std::erase_if(tbl->ordered_items, [&](auto const& r) {
-            return std::holds_alternative<table_row_id>(r.id)
-                && std::get<table_row_id>(r.id) == new_id;
+            return std::holds_alternative<row_id>(r.id)
+                && std::get<row_id>(r.id) == new_id;
         });
 
         // Find anchor position
         auto it = std::ranges::find_if(tbl->ordered_items, [&](auto const& r) {
-            return std::holds_alternative<table_row_id>(r.id)
-                && std::get<table_row_id>(r.id) == anchor;
+            return std::holds_alternative<row_id>(r.id)
+                && std::get<row_id>(r.id) == anchor;
         });
 
         auto row_it = std::ranges::find(tbl->rows, anchor);
@@ -1713,7 +1716,7 @@ namespace arf
     }
 
     template<typename Tag>
-    table_row_id editor::insert_row_before(
+    row_id editor::insert_row_before(
         id<Tag> anchor,
         std::vector<value> cells)
     {
@@ -1721,7 +1724,7 @@ namespace arf
     }
 
     template<typename Tag>
-    table_row_id editor::insert_row_after(
+    row_id editor::insert_row_after(
         id<Tag> anchor,
         std::vector<value> cells)
     {
@@ -1791,7 +1794,7 @@ namespace arf
     )
     {
         auto* tbl = doc_.get_node(table_id);
-        if (!tbl) return invalid_id<table_column_tag>();
+        if (!tbl) return invalid_id<column_tag>();
 
         column_id cid = create_column_node_only(table_id, name, declared_type);
         tbl->columns.push_back(cid);
@@ -1825,11 +1828,11 @@ namespace arf
         std::optional<value_type> declared_type )
     {
         auto* anchor_node = doc_.get_node(anchor);
-        if (!anchor_node) return invalid_id<table_column_tag>();
+        if (!anchor_node) return invalid_id<column_tag>();
 
         table_id owner = anchor_node->table;
         auto* tbl = doc_.get_node(owner);
-        if (!tbl) return invalid_id<table_column_tag>();
+        if (!tbl) return invalid_id<column_tag>();
 
         column_id cid = create_column_node_only(owner, name, declared_type);
 
@@ -1868,11 +1871,11 @@ namespace arf
         std::optional<value_type> declared_type )
     {
         auto* anchor_node = doc_.get_node(anchor);
-        if (!anchor_node) return invalid_id<table_column_tag>();
+        if (!anchor_node) return invalid_id<column_tag>();
 
         table_id owner = anchor_node->table;
         auto* tbl = doc_.get_node(owner);
-        if (!tbl) return invalid_id<table_column_tag>();
+        if (!tbl) return invalid_id<column_tag>();
 
         column_id cid = create_column_node_only(owner, name, declared_type);
 
@@ -1907,7 +1910,7 @@ namespace arf
     }
 
     void editor::set_cell_value(
-        table_row_id row,
+        row_id row,
         column_id col,
         value val)
     {
@@ -1957,7 +1960,7 @@ namespace arf
     }
 
     void editor::set_cell_value(
-        table_row_id row,
+        row_id row,
         column_id col,
         std::vector<value> arr)
     {
@@ -2028,7 +2031,7 @@ namespace arf
         rn->is_edited = true;
     }
 
-    bool editor::erase_row(table_row_id id)
+    bool editor::erase_row(row_id id)
     {
         auto* rn = doc_.get_node(id);
         if (!rn) return false;
@@ -2040,8 +2043,8 @@ namespace arf
 
         std::erase_if(tbl->ordered_items, [&](auto const& r)
         {
-            return std::holds_alternative<table_row_id>(r.id)
-                && std::get<table_row_id>(r.id) == id;
+            return std::holds_alternative<row_id>(r.id)
+                && std::get<row_id>(r.id) == id;
         });
 
         std::erase_if(tbl->rows, [&](auto const& rid) {return rid == id;});
@@ -2069,8 +2072,8 @@ namespace arf
 
             std::erase_if(cat->ordered_items, [&](auto const& r)
             {
-                return std::holds_alternative<table_row_id>(r.id)
-                    && std::get<table_row_id>(r.id) == rid;
+                return std::holds_alternative<row_id>(r.id)
+                    && std::get<row_id>(r.id) == rid;
             });
 
             std::erase_if(doc_.rows_, [&](auto & r){return r.id == rid;});
@@ -2505,6 +2508,17 @@ namespace arf
         return !any_invalid;
     }
     
+//============================================================
+// create_document convenience factor function
+//============================================================
+
+    inline document create_document()
+    {
+        document doc;
+        doc.create_root();
+        return doc;
+    }
+
 }
 
 #endif

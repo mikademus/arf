@@ -26,6 +26,10 @@ namespace arf
 
     class document
     {
+        friend struct materialiser;
+        friend class serializer;
+        friend class editor;   
+
     //------------------------------------------------------------------------
     // Node base class
     //------------------------------------------------------------------------
@@ -116,7 +120,7 @@ namespace arf
     //------------------------------------------------------------------------
 
         size_t row_count() const noexcept;
-        std::optional<table_row_view> row(table_row_id id) const noexcept;
+        std::optional<table_row_view> row(row_id id) const noexcept;
         std::vector<table_row_view>   rows() const noexcept;
 
     //------------------------------------------------------------------------
@@ -132,19 +136,16 @@ namespace arf
         size_t paragraph_count() const noexcept;
 
         category_id create_root();
-        category_id create_category(category_id id, std::string_view name, category_id parent);
-        comment_id create_comment(std::string text);
-        paragraph_id create_paragraph(std::string text);
 
     //------------------------------------------------------------------------
     // Contamination management
     //------------------------------------------------------------------------
 
         void mark_key_contaminated(key_id id);
-        void mark_row_contaminated(table_row_id id);
+        void mark_row_contaminated(row_id id);
 
         // Used by request_clear_contamination
-        using clearable_node = std::variant<key_id, table_row_id>;
+        using clearable_node = std::variant<key_id, row_id>;
 
         // A client is requesting the contamination of
         // a key or row to be cleared. 
@@ -171,7 +172,7 @@ namespace arf
         comment_id    create_comment_id()    noexcept  { return next_comment_id_++; }
         paragraph_id  create_paragraph_id()  noexcept  { return next_paragraph_id_++; }
         table_id      create_table_id()      noexcept  { return next_table_id_++; }
-        table_row_id  create_row_id()        noexcept  { return next_row_id_++; }
+        row_id        create_row_id()        noexcept  { return next_row_id_++; }
         column_id     create_column_id()     noexcept  { return next_column_id_++; }
 
         enum class category_close_form
@@ -204,7 +205,7 @@ namespace arf
             category_id,            // category open
             category_close_marker,  // category close
             table_id,
-            table_row_id,
+            row_id,
             comment_id,
             paragraph_id
         >;
@@ -220,8 +221,8 @@ namespace arf
         template<> struct view_for<key_tag>          { typedef key_view         type; };
         template<> struct view_for<table_tag>        { typedef table_view       type; };
         template<> struct view_for<category_tag>     { typedef category_view    type; };
-        template<> struct view_for<table_row_tag>    { typedef table_row_view   type; };
-        template<> struct view_for<table_column_tag> { typedef column_view      type; };
+        template<> struct view_for<row_tag>    { typedef table_row_view   type; };
+        template<> struct view_for<column_tag> { typedef column_view      type; };
         //template<> struct view_for<comment_tag>      { typedef void type; };//comment_view type; };
         //template<> struct view_for<paragraph_tag>    { typedef void type; };//paragraph_view type; };
 
@@ -229,6 +230,12 @@ namespace arf
         using view_for_t = typename view_for<Tag>::type;
 
     private:
+
+        // Used by materialiser and editor
+        category_id create_category(std::string_view name, category_id parent);
+        category_id create_category(category_id id, std::string_view name, category_id parent);
+        comment_id create_comment(std::string text);
+        paragraph_id create_paragraph(std::string text);
 
         // Entity IDs are guaranteed to be monotonic without reuse.
         // The document controls the creation of IDs.
@@ -238,7 +245,7 @@ namespace arf
         comment_id    next_comment_id_    = comment_id {0};
         paragraph_id  next_paragraph_id_  = paragraph_id {0};
         table_id      next_table_id_      = table_id {0};
-        table_row_id  next_row_id_        = table_row_id {0};
+        row_id  next_row_id_        = row_id {0};
         column_id     next_column_id_     = column_id {0};
 
         // Translate tag (ID) to internal node storage type
@@ -248,8 +255,8 @@ namespace arf
         template<> struct node_for<category_tag>     { typedef category_node type; };
         template<> struct node_for<key_tag>          { typedef key_node type; };
         template<> struct node_for<table_tag>        { typedef table_node type; };
-        template<> struct node_for<table_row_tag>    { typedef row_node type; };
-        template<> struct node_for<table_column_tag> { typedef column_node type; };
+        template<> struct node_for<row_tag>    { typedef row_node type; };
+        template<> struct node_for<column_tag> { typedef column_node type; };
         template<> struct node_for<comment_tag>      { typedef comment_node type; };
         template<> struct node_for<paragraph_tag>    { typedef paragraph_node type; };
 
@@ -273,8 +280,8 @@ namespace arf
             if constexpr      (std::is_same_v<T, category_tag>)     { return find_id(categories_); }
             else if constexpr (std::is_same_v<T, key_tag>)          { return find_id(keys_); }
             else if constexpr (std::is_same_v<T, table_tag>)        { return find_id(tables_); }
-            else if constexpr (std::is_same_v<T, table_row_tag>)    { return find_id(rows_); }
-            else if constexpr (std::is_same_v<T, table_column_tag>) { return find_id(columns_); }
+            else if constexpr (std::is_same_v<T, row_tag>)    { return find_id(rows_); }
+            else if constexpr (std::is_same_v<T, column_tag>) { return find_id(columns_); }
             else if constexpr (std::is_same_v<T, comment_tag>)      { return find_id(comments_); }
             else if constexpr (std::is_same_v<T, paragraph_tag>)    { return find_id(paragraphs_); }
             else static_assert(false, "Illegal ID");
@@ -313,7 +320,7 @@ namespace arf
         // the request_clear_contamination method to allow 
         // the document or tooling to delegate the decision.
         void clear_key_contamination(key_id id);
-        void clear_row_contamination(table_row_id id);        
+        void clear_row_contamination(row_id id);        
 
         bool row_is_valid(document::row_node const& r);
         bool table_is_valid(document::table_node const& t);
@@ -340,28 +347,6 @@ namespace arf
         bool category_is_clean(const category_node& c) const;
         void propagate_contamination_up_category_chain(category_id id);
         void try_clear_category_contamination(category_id id);
-
-        //------------------------------------------------------------------------
-        // View construction helpers
-        //------------------------------------------------------------------------
-
-        friend struct materialiser;
-        friend class serializer;
-        friend class editor;
-
-    public:
-
-// Priviliged access for debug purpose. Should be removed when editor is done.
-#ifdef ARF_EDITOR_HPP
-        std::vector<category_node>&   access_category_nodes() { return categories_; }
-        std::vector<table_node>&      access_table_nodes() { return tables_; }
-        std::vector<column_node>&     access_column_nodes() { return columns_; }
-        std::vector<row_node>&        access_row_nodes() { return rows_; }
-        std::vector<key_node>&        access_key_nodes() { return keys_; }
-        std::vector<comment_node>&    access_comment_nodes() { return comments_; }
-        std::vector<paragraph_node>&  access_paragraph_nodes() { return paragraphs_; }
-        const parse_context* get_source_context() const { return source_context_.get(); }
-#endif        
     };
 
 
@@ -422,7 +407,7 @@ namespace arf
             table_id                     id;
             category_id                  owner;
             std::vector<column_id>       columns;
-            std::vector<table_row_id>    rows;          // semantic collection (all rows)
+            std::vector<row_id>    rows;          // semantic collection (all rows)
             std::vector<source_item_ref> ordered_items; // authored order (rows + comments + paragraphs + subcategories)
         };
 
@@ -440,7 +425,7 @@ namespace arf
 
         struct document::row_node : document::node<>
         {
-            typedef table_row_id id_type;
+            typedef row_id id_type;
             id_type _id() const noexcept { return id; }
             std::string _name() const noexcept
             {
@@ -449,7 +434,7 @@ namespace arf
                 return cell.value_to_string();
             }
 
-            table_row_id             id;
+            row_id             id;
             table_id                 table;
             category_id              owner;
             std::vector<typed_value> cells;
@@ -527,7 +512,7 @@ namespace arf
         category_view owner() const noexcept;
 
         std::span<const column_id> columns() const noexcept { return node->columns; }
-        std::span<const table_row_id> rows() const noexcept { return node->rows; }
+        std::span<const row_id> rows() const noexcept { return node->rows; }
 
         size_t column_count() const noexcept { return node->columns.size(); }
         size_t row_count() const noexcept { return node->rows.size(); }
@@ -539,7 +524,7 @@ namespace arf
         std::optional<size_t> column_index(column_id id) const noexcept;        
 
         std::optional<size_t> row_index(std::string_view name) const noexcept;        
-        std::optional<size_t> row_index(table_row_id id) const noexcept;        
+        std::optional<size_t> row_index(row_id id) const noexcept;        
 
         bool is_locally_valid() const noexcept { return node->semantic == semantic_state::valid; }
         bool is_contaminated() const noexcept { return node->contamination == contamination_state::contaminated; }
@@ -566,7 +551,7 @@ namespace arf
         const document* doc;
         const row_node* node;
 
-        table_row_id id() const noexcept { return node->id; }
+        row_id id() const noexcept { return node->id; }
         std::string name() const noexcept { return node->_name(); }
         std::span<const typed_value> cells() const noexcept { return node->cells; }
 
@@ -589,7 +574,7 @@ namespace arf
         
         category_view owner() const noexcept;
         
-        bool is_array() const noexcept { auto v = node->value.type; return v == value_type::string_array || v == value_type::int_array || v == value_type::float_array; }
+        bool is_array() const noexcept { auto v = node->value.type; return v == value_type::string_array || v == value_type::integer_array || v == value_type::floating_point_array; }
         size_t indices() const noexcept;
 
         bool is_locally_valid() const noexcept { return node->semantic == semantic_state::valid; }
@@ -615,6 +600,32 @@ namespace arf
         assert (categories_.front().id == category_id{0});        
         return category_id{0};
     }    
+
+    inline category_id document::create_category( std::string_view name, category_id parent )
+    {
+        if (auto pcat = get_node(parent))
+        {
+            if (auto dup = category(name))
+                if (dup->parent()->id() == parent)
+                    return invalid_id<category_tag>();
+
+            auto id = create_category_id();
+            category_node node;
+            node.id     = id;
+            node.name   = std::string(name);
+            node.parent = parent;
+
+            categories_.push_back(std::move(node));
+
+            auto it = std::ranges::find_if(categories_, [parent](category_node const & cn){return cn.id == parent;});
+            if (it != categories_.end())
+                it->children.push_back(id);
+
+            return id;            
+        }
+
+        return invalid_id<category_tag>();
+    }
 
     inline category_id document::create_category( category_id id, std::string_view name, category_id parent )
     {
@@ -684,7 +695,7 @@ namespace arf
         }
     }
 
-    inline void document::mark_row_contaminated(table_row_id id)
+    inline void document::mark_row_contaminated(row_id id)
     {
         auto* rn = get_node(id);
         if (!rn) return;
@@ -899,7 +910,7 @@ namespace arf
             try_clear_category_contamination(kn->owner);
     }
 
-    inline void document::clear_row_contamination(table_row_id id)
+    inline void document::clear_row_contamination(row_id id)
     {
         auto* rn = get_node(id);
         if (!rn) return;
@@ -1028,7 +1039,7 @@ namespace arf
         return std::nullopt;
     }
 
-    std::optional<size_t> document::table_view::row_index(table_row_id id) const noexcept
+    std::optional<size_t> document::table_view::row_index(row_id id) const noexcept
     {
         size_t i = 0;
         for (auto const & rid : rows())
@@ -1067,7 +1078,7 @@ namespace arf
     document::column(column_id id) const noexcept { return to_view(columns_, find_node_by_id(columns_, id)); }
 
     inline std::optional<document::table_row_view>
-    document::row(table_row_id id) const noexcept { return to_view(rows_, find_node_by_id(rows_, id)); }
+    document::row(row_id id) const noexcept { return to_view(rows_, find_node_by_id(rows_, id)); }
 
     inline std::optional<document::key_view>
     document::key(key_id id) const noexcept { return to_view(keys_, find_node_by_id(keys_, id)); }

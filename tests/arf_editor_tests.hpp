@@ -89,7 +89,7 @@ inline bool key_scalar_to_array()
     ed.set_key_value(key_view->id(), vals);
 
     auto & val = key_view->value();
-    EXPECT(val.held_type() == value_type::int_array, "Should become integer array");
+    EXPECT(val.held_type() == value_type::integer_array, "Should become integer array");
 
     auto & vec = std::get<std::vector<typed_value>>(val.val);
     EXPECT(vec.size() == 3, "Array size mismatch");
@@ -185,7 +185,7 @@ inline bool table_cell_scalar_to_array()
     ed.set_cell_value(row->id(), tbl->column("a")->id(), std::vector<value>{1,2});
 
     auto const & cell = row->cells().front();
-    EXPECT(cell.held_type() == value_type::int_array, "Type mismatch");
+    EXPECT(cell.held_type() == value_type::integer_array, "Type mismatch");
 
     return true;
 }

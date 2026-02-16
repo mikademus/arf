@@ -58,7 +58,7 @@ namespace arf
             unresolved_name,  
             category_id, 
             table_id, 
-            table_row_id,
+            row_id,
             key_id
         >;
 

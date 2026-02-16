@@ -135,8 +135,8 @@ namespace arf::reflect
 
     struct row_step
     {
-        explicit row_step(table_row_id id) : id(id)  {}
-        table_row_id id;
+        explicit row_step(row_id id) : id(id)  {}
+        row_id id;
     };
 
     struct column_step
@@ -228,7 +228,7 @@ namespace arf::reflect
             return *this;
         }
 
-        address& row(table_row_id id)
+        address& row(row_id id)
         {
             steps.emplace_back(std::in_place_type<row_step>, id);
             return *this;
@@ -973,7 +973,7 @@ namespace arf::reflect
                 break;
 
             case structural_child::kind::row:
-                next.row(table_row_id{child.ordinal});
+                next.row(row_id{child.ordinal});
                 break;
 
             case structural_child::kind::column:

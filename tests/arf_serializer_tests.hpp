@@ -3,6 +3,7 @@
 
 #include "arf_test_harness.hpp"
 #include "../include/arf_serializer.hpp"
+#include "../include/arf_editor.hpp"
 #include "../include/arf.hpp"
 
 namespace arf::tests
@@ -250,9 +251,11 @@ static bool edited_key_reconstructed()
     auto ctx = load(src);
     
     // Edit the key
-    auto& key = ctx.document.access_key_nodes()[0];
-    key.value.val = int64_t(42);
-    key.is_edited = true;
+    auto keys = ctx.document.keys();
+    EXPECT(keys.size() == 1, "There should be exactly one key");
+    auto * node = const_cast<document::key_node *>(keys.front().node);
+    node->value.val = int64_t(42);
+    node->is_edited = true;
     
     std::ostringstream out;
     serializer s(ctx.document);
@@ -269,11 +272,14 @@ static bool edited_key_type_shown()
     auto ctx = load(src);
     
     // Edit and change type
-    auto& key = ctx.document.access_key_nodes()[0];
-    key.value.type = value_type::integer;
-    key.value.type_source = type_ascription::declared;
-    key.value.val = int64_t(42);
-    key.is_edited = true;
+    auto keys = ctx.document.keys();
+    EXPECT(keys.size() == 1, "There should be exactly one key");
+    auto * key = const_cast<document::key_node *>(keys.front().node);
+
+    key->value.type = value_type::integer;
+    key->value.type_source = type_ascription::declared;
+    key->value.val = int64_t(42);
+    key->is_edited = true;
     
     std::ostringstream out;
     serializer s(ctx.document);
@@ -292,9 +298,13 @@ static bool edited_row_reconstructed()
     auto ctx = load(src);
 
     // Columns are UNTYPED, so editing should emit actual variant
-    auto& row = ctx.document.access_row_nodes()[0];
-    row.cells[0].val = int64_t(99);  // Direct assignment OK
-    row.is_edited = true;
+    auto rows = ctx.document.rows();
+    EXPECT(rows.size() == 1, "There should be exactly one key");
+    auto * row = const_cast<document::row_node *>(rows.front().node);
+ 
+    // auto& row = ctx.document.access_row_nodes()[0];
+    row->cells[0].val = int64_t(99);  // Direct assignment OK
+    row->is_edited = true;
     
     std::ostringstream out;
     serializer s(ctx.document);
@@ -317,9 +327,12 @@ static bool edited_typed_row_respects_declaration()
     auto ctx = load(src);
 
     // Edit with WRONG type - but column is declared
-    auto& row = ctx.document.access_row_nodes()[0];
-    row.cells[1].val = std::string("99");  // String in int column!
-    row.is_edited = true;
+    auto rows = ctx.document.rows();
+    EXPECT(rows.size() == 1, "There should be exactly one key");
+    auto * row = const_cast<document::row_node *>(rows.front().node);
+
+    row->cells[1].val = std::string("99");  // String in int column!
+    row->is_edited = true;
     
     std::ostringstream out;
     serializer s(ctx.document);
@@ -344,9 +357,12 @@ static bool mixed_edited_and_authored()
     auto ctx = load(src);
     
     // Edit only the middle key
-    auto& key_b = ctx.document.access_key_nodes()[1];
-    key_b.value.val = int64_t(99);
-    key_b.is_edited = true;
+    auto keys = ctx.document.keys();
+    EXPECT(keys.size() == 3, "There should be exactly three keys");
+    auto * key_b = const_cast<document::key_node *>(keys[1].node);
+
+    key_b->value.val = int64_t(99);
+    key_b->is_edited = true;
     
     std::ostringstream out;
     serializer s(ctx.document);
@@ -368,24 +384,10 @@ static bool mixed_edited_and_authored()
 
 static bool generated_document_simple()
 {
-    document doc;
-    doc.create_root();
-    
-    // Manually create a key
-    document::key_node k;
-    k.id = key_id{0};
-    k.name = "test";
-    k.owner = category_id{0};
-    k.value.type = value_type::integer;
-    k.value.val = int64_t(42);
-    k.value.type_source = type_ascription::tacit;
-    
-    doc.access_key_nodes().push_back(k);
-    with (auto & root = doc.access_category_nodes()[0])
-    {
-        root.keys.push_back(key_id{0});
-        root.ordered_items.push_back(document::source_item_ref{key_id{0}});
-    }
+    auto doc = create_document();
+    auto ed = editor(doc);
+
+    ed.append_key(category_id{0}, "test", int64_t(42), true);
     
     std::ostringstream out;
     serializer s(doc);
@@ -397,27 +399,17 @@ static bool generated_document_simple()
 
 static bool generated_category()
 {
-    document doc;
-    doc.create_root();
+    auto doc = create_document();
+    auto ed = editor(doc);
     
-    auto cat_id = doc.create_category(category_id{1}, "test", category_id{0});
+    auto cat_id = ed.append_category(category_id{0}, "test");
+    ed.append_key(cat_id, "x", int64_t(1), true);
     
-    // Add key to category
-    document::key_node k;
-    k.id = key_id{0};
-    k.name = "x";
-    k.owner = cat_id;
-    k.value.type = value_type::integer;
-    k.value.val = int64_t(1);
-    
-    doc.access_key_nodes().push_back(k);
-    with (auto & cat = doc.access_category_nodes())
-    {
-        cat[1].keys.push_back(key_id{0});
-        cat[0].ordered_items.push_back(document::source_item_ref{cat_id});
-        cat[1].ordered_items.push_back(document::source_item_ref{key_id{0}});
-    }
-    
+    EXPECT(doc.category_count() == 2, "Should be two categories");
+    EXPECT(doc.key_count() == 1, "should be one key");
+    EXPECT(doc.categories().back().name() == "test", "wrong category name");
+    EXPECT(doc.keys().front().name() == "x", "wrong category name");  
+  
     std::ostringstream out;
     serializer s(doc);
     s.write(out);
@@ -512,8 +504,7 @@ static bool option_compact_blank_lines()
 
 static bool empty_document()
 {
-    document doc;
-    doc.create_root();
+    auto doc = create_document();
     
     std::ostringstream out;
     serializer s(doc);
@@ -549,8 +540,6 @@ static bool array_with_empty_elements()
     return true;
 }
 
-// arf_serializer_tests.hpp
-
 static bool indent_inferred_from_sibling_key()
 {
     // Create a minimal document with source context
@@ -564,26 +553,10 @@ static bool indent_inferred_from_sibling_key()
     // Now add a generated key to the same category
     auto cat = ctx.document.category("test");
     EXPECT(cat.has_value(), "test category must exist");
-    
-    document::key_node k;
-    k.id = key_id{ctx.document.key_count()};
-    k.name = "generated_key";
-    k.owner = cat->id();
-    k.creation = creation_state::generated;
-    k.is_edited = false;
-    k.value.type = value_type::integer;
-    k.value.type_source = type_ascription::tacit;
-    k.value.val = int64_t(2);
-    k.value.creation = creation_state::generated;
-    k.value.origin = value_locus::key_value;
-    
-    ctx.document.access_key_nodes().push_back(k);
-    
-    // Add to category's key list and ordered_items
-    auto& cat_node = ctx.document.access_category_nodes()[cat->id().val];
-    cat_node.keys.push_back(k.id);
-    cat_node.ordered_items.push_back(document::source_item_ref{k.id});
-    
+
+    auto ed = editor(ctx.document);
+    ed.append_key(cat->id(), "generated_key", int64_t(2), true);
+
     // Serialize
     std::ostringstream out;
     serializer s(ctx.document);
@@ -593,7 +566,7 @@ static bool indent_inferred_from_sibling_key()
         "test:\n"
         "    authored_key = 1\n"
         "    generated_key = 2\n";  // Should infer 4-space indent from sibling
-    
+
     EXPECT(out.str() == expected, "generated key should infer indent from authored sibling");
     
     return true;
@@ -602,36 +575,15 @@ static bool indent_inferred_from_sibling_key()
 static bool indent_fallback_when_no_siblings()
 {
     // Create document programmatically (no source context)
-    document doc;
-    doc.create_root();
+    auto doc = create_document();
+    editor ed(doc);
     
-    auto cat_id = doc.create_category(category_id{1}, "test", category_id{0});
+    // auto cat_id = doc.create_category("test", category_id{0});
+    auto cat_id = ed.append_category(category_id{0}, "test");
     
     // Create generated key with no siblings
-    document::key_node k;
-    k.id = key_id{0};
-    k.name = "solo_key";
-    k.owner = cat_id;
-    k.creation = creation_state::generated;
-    k.is_edited = false;
-    k.value.type = value_type::integer;
-    k.value.type_source = type_ascription::tacit;
-    k.value.val = int64_t(42);
-    k.value.creation = creation_state::generated;
-    k.value.origin = value_locus::key_value;
-    
-    doc.access_key_nodes().push_back(k);
-    
-    // Add to category structure
-    auto& cat_node = doc.access_category_nodes()[cat_id.val];
-    cat_node.keys.push_back(k.id);
-    cat_node.ordered_items.push_back(document::source_item_ref{k.id});  // ← FIXED: Only the key!
-    cat_node.creation = creation_state::generated;
-    
-    // Add category to root's structure
-    auto& root = doc.access_category_nodes()[0];
-    root.ordered_items.push_back(document::source_item_ref{cat_id});  // ← Root lists the category
-    
+    ed.append_key(cat_id, "solo_key", int64_t(42), true);
+
     // Serialize
     std::ostringstream out;
     serializer s(doc);

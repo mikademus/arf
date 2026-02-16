@@ -218,7 +218,7 @@ static bool semantic_invalid_cell_flagged()
     auto ctx = load(src);
     EXPECT(ctx.has_errors(), "no error emitted");
 
-    auto row = ctx.document.row(table_row_id{0});
+    auto row = ctx.document.row(row_id{0});
     EXPECT(row.has_value(), "there is no row");
 
     auto cell = row->node->cells[0];
@@ -242,7 +242,7 @@ static bool contamination_column_contaminates_rows_only()
     EXPECT(tbl->is_contaminated(), "table should be contaminated by invalid column");
     EXPECT(tbl->is_locally_valid(), "table itself is not misformed"); 
 
-    auto row = doc.row(table_row_id{0});
+    auto row = doc.row(row_id{0});
     EXPECT(row.has_value(), "there is no row");
     EXPECT(row->is_contaminated(), "row should be contaminated by invalid column");
     EXPECT(row->is_locally_valid(), "row itself is not malformed");    
@@ -260,8 +260,8 @@ static bool view_exposes_row_invalidity()
     auto ctx = load(src);
     auto & doc = ctx.document;
 
-    auto row0 = doc.row(table_row_id{0});
-    auto row1 = doc.row(table_row_id{1});
+    auto row0 = doc.row(row_id{0});
+    auto row1 = doc.row(row_id{1});
 
     EXPECT(!row0->is_contaminated(), "row should not be in contaminated state");
     EXPECT(row0->is_locally_valid(), "row should be structurally valid");
@@ -329,8 +329,8 @@ static bool array_table_cells_valid()
     auto ctx = load(src);
     auto & doc = ctx.document;
 
-    auto row0 = doc.row(table_row_id{0});
-    auto row1 = doc.row(table_row_id{1});
+    auto row0 = doc.row(row_id{0});
+    auto row1 = doc.row(row_id{1});
 
     EXPECT(row0->is_locally_valid(), "valid row rejected");
     EXPECT(row1->is_locally_valid(), "valid row rejected");
@@ -348,8 +348,8 @@ static bool array_invalid_element_contaminates_row()
     auto ctx = load(src);
     auto & doc = ctx.document;
 
-    auto row0 = doc.row(table_row_id{0});
-    auto row1 = doc.row(table_row_id{1});
+    auto row0 = doc.row(row_id{0});
+    auto row1 = doc.row(row_id{1});
 
     EXPECT(row0->is_locally_valid(), "dirty row should be structurally valid");
     EXPECT(row0->is_contaminated(), "dirty row should be in contaimnated state");

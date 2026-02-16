@@ -56,6 +56,9 @@ namespace arf
 
         void write(std::ostream& out)
         {
+            if (opts_.echo_lines)
+                DBG_EMIT << "serializer::write\n";
+
             out_ = &out;
             write_category_open(doc_.categories_.front());            
         }
@@ -141,10 +144,10 @@ namespace arf
             write_table(*it);
         }
 
-        void write_item(table_row_id id)
+        void write_item(row_id id)
         {
             if (opts_.echo_lines)
-                DBG_EMIT << "serializer::write_item(table_row_id)\n";
+                DBG_EMIT << "serializer::write_item(row_id)\n";
 
             auto it = doc_.find_node_by_id(doc_.rows_, id);
             assert(it != doc_.rows_.end());
@@ -193,7 +196,7 @@ namespace arf
         void write_key(const document::key_node& k)
         {
             if (opts_.echo_lines)
-                DBG_EMIT << "serializer::write_key\n";
+                DBG_EMIT << "serializer::write_key " << k.name << std::endl;
 
             bool force_reconstruct = 
                 (opts_.types != serializer_options::type_policy::preserve);
@@ -285,7 +288,10 @@ namespace arf
         void write_category_contents(const document::category_node& cat)
         {
             if (opts_.echo_lines)
-                DBG_EMIT << "serializer::write_category_contents\n";
+            {
+                DBG_EMIT << "serializer::write_category_contents: "
+                         << (cat.id == category_id{0} ? "__root__" : cat.name) << std::endl;
+            }
 
             for (const auto& item : cat.ordered_items)
             {
@@ -633,7 +639,7 @@ namespace arf
                         *out_ << "0";  // Fallback for unconvertible
                     break;
                     
-                case value_type::decimal:
+                case value_type::floating_point:
                     if (auto d = variant_to_double(v))
                         *out_ << *d;
                     else
@@ -676,12 +682,12 @@ namespace arf
             {
                 case value_type::string:       return "str";
                 case value_type::integer:      return "int";
-                case value_type::decimal:      return "float";
+                case value_type::floating_point:      return "float";
                 case value_type::boolean:      return "bool";
                 case value_type::date:         return "date";
                 case value_type::string_array: return "str[]";
-                case value_type::int_array:    return "int[]";
-                case value_type::float_array:  return "float[]";
+                case value_type::integer_array:    return "int[]";
+                case value_type::floating_point_array:  return "float[]";
                 default:                       return "str";
             }
         }

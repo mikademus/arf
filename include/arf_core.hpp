@@ -67,16 +67,16 @@ namespace arf
 
     struct category_tag;
     struct table_tag;
-    struct table_row_tag;
-    struct table_column_tag;
+    struct row_tag;
+    struct column_tag;
     struct key_tag;
     struct comment_tag;
     struct paragraph_tag;
 
     using category_id   = id<category_tag>;
     using table_id      = id<table_tag>;
-    using table_row_id  = id<table_row_tag>;
-    using column_id     = id<table_column_tag>;
+    using row_id        = id<row_tag>;
+    using column_id     = id<column_tag>;
     using key_id        = id<key_tag>;
     using comment_id    = id<comment_tag>;
     using paragraph_id  = id<paragraph_tag>;
@@ -107,12 +107,12 @@ namespace arf
         unresolved,
         string,
         integer,
-        decimal,
+        floating_point,
         boolean,
         date,
         string_array,
-        int_array,
-        float_array
+        integer_array,
+        floating_point_array
     };
 
     static std::array<size_t, 9> value_type_to_variant_index =
@@ -120,12 +120,12 @@ namespace arf
         0, // unresolved -> monostate
         1, // string -> std::string
         2, // integer -> int64_t
-        3, // decimal -> double
+        3, // floating_point -> double
         4, // boolean -> bool
         1, // date -> std::string
         5, // string_array -> std::vector<typed_value>
-        5, // int_array -> std::vector<typed_value>
-        5, // float_array -> std::vector<typed_value>
+        5, // integer_array -> std::vector<typed_value>
+        5, // floating_point_array -> std::vector<typed_value>
     };
 
     enum class type_ascription
@@ -192,7 +192,7 @@ namespace arf
     {
         if (std::holds_alternative<std::string>(val)) return value_type::string;
         if (std::holds_alternative<int64_t>(val)) return value_type::integer;
-        if (std::holds_alternative<double>(val)) return value_type::decimal;
+        if (std::holds_alternative<double>(val)) return value_type::floating_point;
         if (std::holds_alternative<bool>(val)) return value_type::boolean;
         if (std::holds_alternative<std::vector<typed_value>>(val)) 
         {
@@ -201,8 +201,8 @@ namespace arf
                 switch (arf::held_type(vec.front().val))
                 {
                    case value_type::string: return value_type::string_array;
-                   case value_type::integer: return value_type::int_array;
-                   case value_type::decimal: return value_type::float_array;
+                   case value_type::integer: return value_type::integer_array;
+                   case value_type::floating_point: return value_type::floating_point_array;
                    default: break;
                 }
             }
@@ -218,8 +218,8 @@ namespace arf
     inline bool is_generated(const typed_value &value) { return value.creation == creation_state::generated; }
     inline bool is_edited(const typed_value &value)    { return value.is_edited; }
 
-    //inline bool is_numeric(value_type type)         { return type == value_type::integer || type == value_type::decimal; }
-    inline bool is_array_type(value_type type)           { return type == value_type::string_array || type == value_type::int_array || type == value_type::float_array; }
+    //inline bool is_numeric(value_type type)         { return type == value_type::integer || type == value_type::floating_point; }
+    inline bool is_array_type(value_type type)           { return type == value_type::string_array || type == value_type::integer_array || type == value_type::floating_point_array; }
     //inline bool is_string(value_type type)          { return type == value_type::string; }
     //inline bool is_boolean(value_type type)         { return type == value_type::boolean; }
 
@@ -251,7 +251,7 @@ namespace arf
 
     struct table_row
     {
-        table_row_id id;
+        row_id id;
         category_id  owning_category;
         std::vector<typed_value> cells;
     };
@@ -261,7 +261,7 @@ namespace arf
         table_id              id;
         category_id           owning_category;
         std::vector<column>   columns;
-        std::vector<table_row_id> rows;   // in authored order
+        std::vector<row_id> rows;   // in authored order
     };
 
 //========================================================================
@@ -307,8 +307,8 @@ namespace arf
             switch (array_type)
             {
                 case value_type::string_array: return value_type::string;
-                case value_type::int_array:    return value_type::integer;
-                case value_type::float_array:  return value_type::decimal;
+                case value_type::integer_array:    return value_type::integer;
+                case value_type::floating_point_array:  return value_type::floating_point;
                 default:                       return value_type::unresolved;
             }
         }
@@ -319,12 +319,12 @@ namespace arf
             {
                 case value_type::string: return "str";
                 case value_type::integer: return "int";
-                case value_type::decimal: return "float";
+                case value_type::floating_point: return "float";
                 case value_type::boolean: return "bool";
                 case value_type::date: return "date";
                 case value_type::string_array: return "str[]";
-                case value_type::int_array: return "int[]";
-                case value_type::float_array: return "float[]";
+                case value_type::integer_array: return "int[]";
+                case value_type::floating_point_array: return "float[]";
                 default: return "str";
             }
         }
@@ -355,13 +355,13 @@ namespace arf
             auto s = to_lower(std::string(trim_sv(sv)));
 
             if (s == "int")     return value_type::integer;
-            if (s == "float")   return value_type::decimal;
+            if (s == "float")   return value_type::floating_point;
             if (s == "bool")    return value_type::boolean;
             if (s == "date")    return value_type::date;
             if (s == "str")     return value_type::string;
             if (s == "str[]")   return value_type::string_array;
-            if (s == "int[]")   return value_type::int_array;
-            if (s == "float[]") return value_type::float_array;
+            if (s == "int[]")   return value_type::integer_array;
+            if (s == "float[]") return value_type::floating_point_array;
 
             return std::nullopt;
         }        
@@ -387,7 +387,7 @@ namespace arf
         template<std::floating_point T>
         struct vt_conv<T>
         {
-            enum vtype { vtype = static_cast<int>(value_type::decimal) };
+            enum vtype { vtype = static_cast<int>(value_type::floating_point) };
             typedef double stype;
         };
 
