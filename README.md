@@ -2,7 +2,7 @@
 
 **Version 0.3.0** — February 2026 — Stable implementation with full CRUD support
 
-| NUNO is a compact, deterministic data language designed as a human-centric alternative to JSON, YAML, and TOML that excels where literate documentation meets structured data — interweave prose, tables, and hierarchies in one human-centric format. | ![mascot](arf_mascot_small.png) |
+| NUNO is a compact, deterministic data language designed as a human-centric alternative to JSON, YAML, and TOML that excels where literate documentation meets structured data — interweave prose, tables, and hierarchies in one human-centric format. | ![mascot](nuno_logo.png) |
 |-------------------------------------------------------------------------------------------------------------------------------|---------------------------------------|
 
 “Nuno” means woven cloth. The format is designed as textual fabric: structured, layered, and interwoven. It introduces a nested, unified notation for interweaving data and prose that remains deterministic and efficiently machine-parseable.
