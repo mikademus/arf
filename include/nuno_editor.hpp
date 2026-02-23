@@ -1,14 +1,14 @@
-// arf_editor.hpp - A Readable Format (Arf!) - Document Editor
+// nuno_editor.hpp - A Readable Format (NUNO) - Document Editor
 // Version 0.3.0
 // Copyright 2025 Mikael Ueno A
 // Licenced as-is under the MIT licence.
 
-#ifndef ARF_EDITOR_HPP
-#define ARF_EDITOR_HPP
+#ifndef NUNO_EDITOR_HPP
+#define NUNO_EDITOR_HPP
 
-#include "arf_document.hpp"
+#include "nuno_document.hpp"
 
-namespace arf
+namespace nuno
 {
     // Convenience method
     document create_document();

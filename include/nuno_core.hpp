@@ -1,10 +1,10 @@
-// arf_core.hpp - A Readable Format (Arf!) - Core Data Structures
+// nuno_core.hpp - A Readable Format (NUNO) - Core Data Structures
 // Version 0.3.0
 // Copyright 2025 Mikael Ueno A
 // Licenced as-is under the MIT licence.
 
-#ifndef ARF_CORE_HPP
-#define ARF_CORE_HPP
+#ifndef NUNO_CORE_HPP
+#define NUNO_CORE_HPP
 
 #include <algorithm>
 #include <array>
@@ -15,7 +15,7 @@
 #include <variant>
 #include <vector>
 
-namespace arf 
+namespace nuno 
 {
     #define TRACE_IMPL(x) std::cout << std::string(x, '-') << " " << __FUNCTION__ << " line " << __LINE__
     #define TRACE(ind) TRACE_IMPL(ind) << std::endl    
@@ -198,7 +198,7 @@ namespace arf
         {
             auto const & vec = std::get<std::vector<typed_value>>(val);
             if (!vec.empty())
-                switch (arf::held_type(vec.front().val))
+                switch (nuno::held_type(vec.front().val))
                 {
                    case value_type::string: return value_type::string_array;
                    case value_type::integer: return value_type::integer_array;
@@ -210,7 +210,7 @@ namespace arf
         return value_type::unresolved;
     }
 
-    value_type typed_value::held_type() const noexcept { return arf::held_type(val); }
+    value_type typed_value::held_type() const noexcept { return nuno::held_type(val); }
 
     inline bool is_valid(const typed_value &value)     { return value.semantic == semantic_state::valid; }
     inline bool is_clean(const typed_value &value)     { return value.contamination == contamination_state::clean; }
@@ -422,6 +422,6 @@ namespace arf
         }
     }
     
-} // namespace arf
+} // namespace nuno
 
-#endif // ARF_CORE_HPP
+#endif // NUNO_CORE_HPP

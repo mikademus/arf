@@ -1,10 +1,10 @@
-// arf_query.hpp - A Readable Format (Arf!) - Query Interface
+// nuno_query.hpp - A Readable Format (NUNO) - Query Interface
 // Version 0.3.0
 // Copyright 2025 Mikael Ueno A
 // Licenced as-is under the MIT licence.
 // 
 // The query API provides a fluent interface for selecting and extracting
-// values from Arf! documents. Queries operate on "value locations" rather
+// values from NUNO documents. Queries operate on "value locations" rather
 // than navigating object graphs, supporting:
 //
 // - Dot-path selection: query(doc, "world.config.seed")
@@ -14,11 +14,11 @@
 //
 // See query_interface.md for detailed usage patterns.
 
-#ifndef ARF_QUERY_HPP
-#define ARF_QUERY_HPP
+#ifndef NUNO_QUERY_HPP
+#define NUNO_QUERY_HPP
 
-#include "arf_document.hpp"
-#include "arf_reflect.hpp"
+#include "nuno_document.hpp"
+#include "nuno_reflect.hpp"
 
 #include <charconv>
 #include <concepts>
@@ -27,7 +27,7 @@
 #include <string_view>
 #include <vector>
 
-namespace arf
+namespace nuno
 {
 
     struct query_handle;
@@ -2469,6 +2469,6 @@ namespace arf
         return query(doc, path).as_strings();
     }
 
-} // namespace arf
+} // namespace nuno
 
-#endif // ARF_QUERY_HPP
+#endif // NUNO_QUERY_HPP

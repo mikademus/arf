@@ -1,20 +1,20 @@
-#ifndef ARF_TESTS_QUERIES__
-#define ARF_TESTS_QUERIES__
+#ifndef NUNO_TESTS_QUERIES__
+#define NUNO_TESTS_QUERIES__
 
 
 #pragma once
 
-#include "arf_test_harness.hpp"
+#include "nuno_test_harness.hpp"
 
-#include "../include/arf_query.hpp"
-#include "../include/arf.hpp"
+#include "../include/nuno_query.hpp"
+#include "../include/nuno.hpp"
 
 #include <iostream>
 #include <limits>
 
-namespace arf::tests
+namespace nuno::tests
 {
-    using namespace arf;
+    using namespace nuno;
 
     // -----------------------------------------------------------------
     // Basic path resolution
@@ -459,7 +459,7 @@ namespace arf::tests
         auto ctx = load(R"(
             npc:
                 # name   hp:int   race
-                  npc1   12       dwarf
+                  npc1   12       dwnuno
                   npc2   11       elf
                   npc3   10       gnome
                   npc4   9        orc
@@ -471,7 +471,7 @@ namespace arf::tests
         EXPECT(!q.locations().empty(), "Query should have resolved");
         EXPECT(q.locations().size() == 6, "There should be six matches");
 
-        std::string_view strs[] = {"npc1", "dwarf", 
+        std::string_view strs[] = {"npc1", "dwnuno", 
                                    "npc2", "elf", 
                                    "npc3", "gnome"};
         for (int i = 0; i < 6; ++i)

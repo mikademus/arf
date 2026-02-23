@@ -1,15 +1,15 @@
-#ifndef ARF_TESTS_COMPREHENSIVE__
-#define ARF_TESTS_COMPREHENSIVE__
+#ifndef NUNO_TESTS_COMPREHENSIVE__
+#define NUNO_TESTS_COMPREHENSIVE__
 
-#include "arf_test_harness.hpp"
-#include "../include/arf_query.hpp"
-#include "../include/arf_editor.hpp"
-#include "../include/arf_serializer.hpp"
-#include "../include/arf.hpp"
+#include "nuno_test_harness.hpp"
+#include "../include/nuno_query.hpp"
+#include "../include/nuno_editor.hpp"
+#include "../include/nuno_serializer.hpp"
+#include "../include/nuno.hpp"
 
-namespace arf::tests
+namespace nuno::tests
 {
-using namespace arf;
+using namespace nuno;
 
 //#define with(x) if (x; []{ return true; }())
 

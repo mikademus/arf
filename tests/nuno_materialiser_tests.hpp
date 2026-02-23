@@ -1,16 +1,16 @@
-#ifndef ARF_TESTS_MATERIALISER__
-#define ARF_TESTS_MATERIALISER__
+#ifndef NUNO_TESTS_MATERIALISER__
+#define NUNO_TESTS_MATERIALISER__
 
 /* *************************************************************************
- *  This test suite enforces semantic contracts of the ARF materialiser.   *
+ *  This test suite enforces semantic contracts of the NUNO materialiser.   *
  *  Test names describe language policy, not implementation behaviour.     *
  ************************************************************************* */
 
-#include "arf_test_harness.hpp"
-#include "../include/arf.hpp"
+#include "nuno_test_harness.hpp"
+#include "../include/nuno.hpp"
 
 #include <ranges>
-namespace arf::tests
+namespace nuno::tests
 {
 
 static bool scope_keys_are_category_local()

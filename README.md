@@ -1,11 +1,13 @@
-# Arf! — A Readable Data Format for Configs and Tables
+# NUNO — A Readable Data Format for Configs and Tables
 
 **Version 0.3.0** — February 2026 — Stable implementation with full CRUD support
 
-| Arf! is a compact, deterministic data language designed as a human-centric alternative to JSON, YAML, and TOML that excels where literate documentation meets structured data — interweave prose, tables, and hierarchies in one human-centric format. | ![mascot](arf_mascot_small.png) |
+| NUNO is a compact, deterministic data language designed as a human-centric alternative to JSON, YAML, and TOML that excels where literate documentation meets structured data — interweave prose, tables, and hierarchies in one human-centric format. | ![mascot](arf_mascot_small.png) |
 |-------------------------------------------------------------------------------------------------------------------------------|---------------------------------------|
 
-Arf! ("A Readable Format", also the bark of an enthusiastic small dog) is a compact, predictable, deterministic and explicitly scoped data language built for human readability without giving up structure. It mixes hierarchical categories, key/value pairs, and TOON-style tables[^1] (column-aligned, whitespace-delimited) that can be subdivided into named subsections.
+“Nuno” means woven cloth. The format is designed as textual fabric: structured, layered, and interwoven. It introduces a nested, unified notation for interweaving data and prose that remains deterministic and efficiently machine-parseable.
+
+NUNO is a compact, predictable, deterministic and explicitly scoped data language built for human readability without giving up structure. It mixes hierarchical categories, key/value pairs, and TOON-style tables[^1] (column-aligned, whitespace-delimited) that can be subdivided into named subsections.
 
 The goals are simple:
 
@@ -22,21 +24,21 @@ The goals are simple:
 ## Overview
 
 ### Comparison at a Glance
-| Feature	                | JSON	 | YAML	 | TOML	 | TOON  | Arf!  | Notes |
+| Feature	                | JSON	 | YAML	 | TOML	 | TOON  | NUNO  | Notes |
 | :---                    | ---   | ---   | ---   | ---   | ---   | --- |
 | Indentation Sensitivity | ❌    | ✅    | ❌    | n/a   | ❌    |     |
 | Comments	               | ❌	   | ✅	   | ✅	   | ⚠️    | ✅    | TOON: By convention, not by specification  |
-| Free-form Prose         | ❌    | ❌    | ❌    | ❌    | ✅    | Arf!: First-class paragraphs alongside data |
+| Free-form Prose         | ❌    | ❌    | ❌    | ❌    | ✅    | NUNO: First-class paragraphs alongside data |
 | Key/values	             | ✅	   | ✅	   | ✅	   | ❌    | ✅    |     |
 | Native Tables	          | ❌	   | ❌	   | ❌	   | ✅    | ✅    | TOON: CSV-style tabular arrays |
 | No-Quote Strings	       | ❌	   | ✅	   | ❌	   | ✅    | ✅    |     |
 | Type Annotations	       | ❌	   | ❌	   | ❌	   | ⚠️    | ✅    | TOON: Implicit/Schema-aware |
 | Indentation-Independent	| ✅	   | ❌	   | ✅	   | ❌    | ✅    |     |
 | Deterministic Parsing	  | ✅	   | ❌	   | ✅	   | ✅    | ✅    |     |
-| Human readable          | C | A | A | A | S | Arf!: Fully human-centric |
-| Human editable          | D | B | A | B | S | Arf!: Minimal syntax friction |
+| Human readable          | C | A | A | A | S | NUNO: Fully human-centric |
+| Human editable          | D | B | A | B | S | NUNO: Minimal syntax friction |
 
-Arf! provides:
+NUNO provides:
 
 * Hierarchical categories using a minimal marker syntax rather than indentation
 * Key/value bindings with optional type annotation
@@ -46,7 +48,7 @@ Arf! provides:
 * Whitespace freedom outside tables
 * Fully deterministic parsing rules
 
-Arf! aims to be the practical everyday format for configs, content files, world definitions, and structured datasets.
+NUNO aims to be the practical everyday format for configs, content files, world definitions, and structured datasets.
 
 ### Use cases
 
@@ -69,24 +71,24 @@ Examples of areas of particular suitability:
 - API Reference — Inline documentation in header files
 
 **Getting Started:**
-- See "Using Arf! in C++" section below
+- See "Using NUNO in C++" section below
 
 ## Philosophy: The Human-First Protocol, Built for Speed
 
-Most modern data formats are designed solely for transmission (JSON) or system-level automation (YAML). They prioritize rigid schemas or opaque parsing rules. Arf! is built on the belief that for many tasks—configuration, world-building, and creative data entry—clarity for the human writer can co-exist with trivial parsing for the machine.
+Most modern data formats are designed solely for transmission (JSON) or system-level automation (YAML). They prioritize rigid schemas or opaque parsing rules. NUNO is built on the belief that for many tasks—configuration, world-building, and creative data entry—clarity for the human writer can co-exist with trivial parsing for the machine.
 
 1. **Readability is Not a "Feature"; It's the Goal**<br />
-In Arf!, you should be able to scan a file and understand its hierarchy through visual landmarks (colons and slashes) rather than counting invisible whitespace or matching nested braces. If you can't read it comfortably, it's a chore.
+In NUNO, you should be able to scan a file and understand its hierarchy through visual landmarks (colons and slashes) rather than counting invisible whitespace or matching nested braces. If you can't read it comfortably, it's a chore.
 2. **The "Copy-Paste" Safety Principle**<br />
-One of the greatest frustrations with indentation-based formats (like YAML or TOON) is that moving a block of text can silently change its meaning or break the parser. Arf! uses explicit scoping that preserves structural integrity no matter where you paste the data.
+One of the greatest frustrations with indentation-based formats (like YAML or TOON) is that moving a block of text can silently change its meaning or break the parser. NUNO uses explicit scoping that preserves structural integrity no matter where you paste the data.
 3. **Determinism Over "Magic"**<br />
-Arf! avoids "magic" parsing. In YAML, the string NO might be converted to a boolean false automatically. In Arf!, a string is a string. We believe the computer should never have to guess what the human meant. This deterministic structure is precisely what allows for fast, simple machine parsing.
+NUNO avoids "magic" parsing. In YAML, the string NO might be converted to a boolean false automatically. In NUNO, a string is a string. We believe the computer should never have to guess what the human meant. This deterministic structure is precisely what allows for fast, simple machine parsing.
 4. **Tables are First-Class Citizens**<br />
-Data isn't just trees; it's often rows. Forcing tabular data into nested Key/Value pairs (JSON) or repetitive arrays (TOML) is an ergonomic failure. Arf! treats the Table as a primary construct, allowing humans to maintain the "spreadsheet view" they naturally prefer for lists of entities.
+Data isn't just trees; it's often rows. Forcing tabular data into nested Key/Value pairs (JSON) or repetitive arrays (TOML) is an ergonomic failure. NUNO treats the Table as a primary construct, allowing humans to maintain the "spreadsheet view" they naturally prefer for lists of entities.
 5. **Graceful Degradation**<br />
-Arf! is designed to be "hand-rolled." You shouldn't need a specialized IDE plugin to write a config file. By allowing whitespace freedom outside of tables and offering simple shorthand closures (/), Arf! scales easily.
+NUNO is designed to be "hand-rolled." You shouldn't need a specialized IDE plugin to write a config file. By allowing whitespace freedom outside of tables and offering simple shorthand closures (/), NUNO scales easily.
 
-While other formats create complex problems that require complex parsers, Arf! provides elegant simplicity for both the human author and the machine reader.
+While other formats create complex problems that require complex parsers, NUNO provides elegant simplicity for both the human author and the machine reader.
 
 ## Quick Examples
 
@@ -94,7 +96,7 @@ While other formats create complex problems that require complex parsers, Arf! p
 
 ```scala
 // Game settings and configuration
-// Demonstrates Arf! used as .INI-replacement
+// Demonstrates NUNO used as .INI-replacement
 
 settings:
   version = 1.0.0
@@ -137,7 +139,7 @@ This example is intentionally verbose, using explicit named closures inside a ta
 ### Improved CSV-replacement with annotations
 ```scala
 // Product Inventory - Q4 2025
-// Demonstrates Arf! as a CSV-replacement with hierarchy and annotations
+// Demonstrates NUNO as a CSV-replacement with hierarchy and annotations
 
 inventory:
 
@@ -172,7 +174,7 @@ inventory:
 ### Scientific dataset with annotations
 ```scala
 // Experimental Results - Enzyme Kinetics Study
-// Demonstrates Arf! for research data with embedded methodology
+// Demonstrates NUNO for research data with embedded methodology
 
 experiment:
   study_id = EK-2025-042
@@ -199,10 +201,10 @@ experiment:
 
   :inhibitor_screen
     // Competitive inhibition assay with known inhibitors
-    # compound       IC50_mM  inhibition_type
-      Oxamate        2.4      competitive
-      Gossypol       0.8      uncompetitive
-      FX11           0.3      non-competitive
+    # compound      IC50_mM  inhibition_type
+      Oxamate       2.4      competitive
+      Gossypol      0.8      uncompetitive
+      FX11          0.3      non-competitive
     /
 
 /experiment
@@ -211,7 +213,7 @@ experiment:
 ### Flowing document with prose and data interwoven
 ```scala
 // Character Sheet - Theron Ashblade
-// Demonstrates Arf! as a literature-with-data format
+// Demonstrates NUNO as a literature-with-data format
 
 character:
   name = Theron Ashblade
@@ -251,7 +253,7 @@ This example uses shorthand close notation ("/" by itself) to cut down on visual
 
 ## Literate Data: Prose Meets Structure
 
-Arf! 0.3.0 introduces **paragraphs** — first-class prose blocks that live alongside your data. This enables entirely new use cases where documentation and data need to coexist. Example use cases:
+NUNO 0.3.0 introduces **paragraphs** — first-class prose blocks that live alongside your data. This enables entirely new use cases where documentation and data need to coexist. Example use cases:
 
 ### Technical Documentation
 Interleave explanations with configuration:
@@ -334,25 +336,25 @@ quest_dialog:
 - **Version control friendly** — Prose and data changes tracked together
 - **Literate programming** — Explain *why* alongside *what*
 
-This makes Arf! ideal for:
+This makes NUNO ideal for:
 - Game design documents with embedded data
 - Technical manuals with live configuration
 - Annotated datasets for research
 - Living documentation that includes examples
 - RPG sourcebooks and supplements
 
-## Using Arf! in C++
+## Using NUNO in C++
 
 ### Quick Start
 
 **Include the framework:**
 ```cpp
-#include "arf.hpp"
+#include "nuno.hpp"
 ```
 
 **Read and query a document:**
 ```cpp
-auto ctx = arf::load_file("config.arf");
+auto ctx = nuno::load_file("config.nuno");
 if (ctx.has_errors()) {
     for (auto& err : ctx.errors) {
         std::cerr << err.message << "\n";
@@ -363,8 +365,8 @@ if (ctx.has_errors()) {
 auto& doc = ctx.document;
 
 // High-level queries
-auto resolution = arf::query(doc, "settings.graphics.resolution").as_string();
-auto fullscreen = arf::query(doc, "settings.graphics.fullscreen").as_boolean();
+auto resolution = nuno::query(doc, "settings.graphics.resolution").as_string();
+auto fullscreen = nuno::query(doc, "settings.graphics.fullscreen").as_boolean();
 
 std::cout << "Resolution: " << *resolution << "\n";
 std::cout << "Fullscreen: " << (*fullscreen ? "yes" : "no") << "\n";
@@ -394,8 +396,8 @@ for (auto table_id : entities_cat->tables()) {
 
 **Create and edit documents:**
 ```cpp
-arf::document doc = arf::create_document();
-arf::editor ed(doc);
+nuno::document doc = nuno::create_document();
+nuno::editor ed(doc);
 
 // Create category and keys
 auto settings_id = ed.append_category(doc.root()->id(), "settings");
@@ -404,8 +406,8 @@ ed.append_key(settings_id, "port", 8080);
 
 // Create typed table
 auto table_id = ed.append_table(settings_id, {
-    {"name", arf::value_type::string},
-    {"enabled", arf::value_type::boolean}
+    {"name", nuno::value_type::string},
+    {"enabled", nuno::value_type::boolean}
 });
 
 // Add rows
@@ -413,30 +415,30 @@ ed.append_row(table_id, {std::string("feature_x"), true});
 ed.append_row(table_id, {std::string("feature_y"), false});
 
 // Edit existing values
-auto version_key = arf::query(doc, "settings.version").key_id();
+auto version_key = nuno::query(doc, "settings.version").key_id();
 ed.set_key_value(*version_key, std::string("2.0.0"));
 ```
 
 **Serialize to file:**
 ```cpp
-std::ofstream out("output.arf");
-arf::serializer s(doc);
+std::ofstream out("output.nuno");
+nuno::serializer s(doc);
 s.write(out);
 // Preserves authored structure and order
 ```
 
 ### Architecture Overview
 
-The Arf! C++ implementation provides a complete document framework:
+The NUNO C++ implementation provides a complete document framework:
 
 **Core Modules:**
-- **Parser** (`arf_parser.hpp`) — Lexical analysis and CST generation
-- **Materializer** (`arf_materialise.hpp`) — Document construction with semantic validation
-- **Document** (`arf_document.hpp`) — Data model with stable IDs, views, and metadata
-- **Query** (`arf_query.hpp`) — High-level ergonomic data access with query DSL
-- **Reflection** (`arf_reflect.hpp`) — Low-level address-based inspection for tooling
-- **Editor** (`arf_editor.hpp`) — Type-safe CRUD operations (required for document mutation)
-- **Serializer** (`arf_serializer.hpp`) — Source-faithful output generation
+- **Parser** (`nuno_parser.hpp`) — Lexical analysis and CST generation
+- **Materializer** (`nuno_materialise.hpp`) — Document construction with semantic validation
+- **Document** (`nuno_document.hpp`) — Data model with stable IDs, views, and metadata
+- **Query** (`nuno_query.hpp`) — High-level ergonomic data access with query DSL
+- **Reflection** (`nuno_reflect.hpp`) — Low-level address-based inspection for tooling
+- **Editor** (`nuno_editor.hpp`) — Type-safe CRUD operations (required for document mutation)
+- **Serializer** (`nuno_serializer.hpp`) — Source-faithful output generation
 
 **Key Design Features:**
 - **Stable Entity IDs** — All entities have persistent, type-safe handles
@@ -468,22 +470,22 @@ Source Text → Parser (CST) → Materializer → Document
 
 Single-file include:
 ```cpp
-#include "arf.hpp"  // All modules
+#include "nuno.hpp"  // All modules
 ```
 
 Selective includes:
 ```cpp
-#include "arf_core.hpp"       // Core types only
-#include "arf_parser.hpp"     // Parser
-#include "arf_query.hpp"      // Query interface
-#include "arf_editor.hpp"     // Editor API
+#include "nuno_core.hpp"       // Core types only
+#include "nuno_parser.hpp"     // Parser
+#include "nuno_query.hpp"      // Query interface
+#include "nuno_editor.hpp"     // Editor API
 // etc.
 ```
 
 **Build System:**
 ```cmake
 # CMake example
-target_include_directories(my_app PRIVATE path/to/arf/include)
+target_include_directories(my_app PRIVATE path/to/nuno/include)
 target_compile_features(my_app PRIVATE cxx_std_20)
 ```
 
@@ -494,7 +496,7 @@ target_compile_features(my_app PRIVATE cxx_std_20)
 * TOML is reliable but structurally repetitive.
 * TOON tables are lovely but limited.
 
-Arf! attempts to unify the strengths of each:
+NUNO attempts to unify the strengths of each:
 * JSON's predictability
 * YAML's readability
 * TOML's clarity
@@ -520,7 +522,7 @@ All characters other than EOL are permitted within a value.
 
 Strings and escaping:
 > [!NOTE]
-> Arf! treats string values as raw text.
+> NUNO treats string values as raw text.
 > No escape sequences are recognised or interpreted by the language.
 > Backslashes, quotes, and other characters have no special meaning.
 > Clients may impose their own conventions for interpreting string contents.
@@ -569,12 +571,12 @@ my_array:str[] = foo|bar|baz
 ```
 Lists must always be type annotated or will be treated as strings. Note that the `[]` is a verbatim symbol and does not and cannot take the array length inside the brackets. 
 
-**Arrays are single-dimensional only.** Arf! does not support nested arrays or multi-dimensional array syntax. This design choice maintains:
+**Arrays are single-dimensional only.** NUNO does not support nested arrays or multi-dimensional array syntax. This design choice maintains:
 - Syntactic simplicity (no bracket nesting required)
 - Human readability (flat data with clear semantic context)
 - Parsing simplicity (single-pass, no depth tracking)
 
-Each array element has semantic context from its containing structure (key name, column header, category). Nested arrays would lose this contextual clarity and go against Arf!'s human-first design philosophy.
+Each array element has semantic context from its containing structure (key name, column header, category). Nested arrays would lose this contextual clarity and go against NUNO's human-first design philosophy.
 
 ### Line comments
 ```scala
@@ -590,7 +592,7 @@ until the next structural item.
  
 Paragraphs are first-class entities, tracked and serialized
 in document order alongside keys, tables, categories, and comments.
-Everything that is not Arf structure will be retained as paragraphs.
+Everything that is not NUNO structure will be retained as paragraphs.
 ```
 
 **Characteristics:**
@@ -602,8 +604,8 @@ Everything that is not Arf structure will be retained as paragraphs.
 > [!NOTE]
 > **Design Philosophy:**
 > In most formats, structure is mandatory and prose is an afterthought (if allowed at all). 
-> Arf inverts this: prose is the default state, structure is what you opt into. 
-> This makes Arf naturally suited for documents where data lives within narrative context, 
+> NUNO inverts this: prose is the default state, structure is what you opt into. 
+> This makes NUNO naturally suited for documents where data lives within narrative context, 
 > not the other way around.
 
 **Common uses:**
@@ -640,7 +642,7 @@ settings:
 /settings
 ```
 
-Note that Arf allows for definitions in the root:
+Note that NUNO allows for definitions in the root:
 ```scala
 foo = 13
 top:
@@ -734,7 +736,7 @@ Example:
 ```
 
 ### Subcategories in tables
-Arf supports subdividing tables without restarting the header.
+NUNO supports subdividing tables without restarting the header.
 ```scala
 items:
 #   name      type      value
@@ -811,16 +813,16 @@ world:
 /structures
 ```
 
-# The Case for Arf!
+# The Case for NUNO
 
-|   | Pros  | Cons  | Arf! advantages   |
+|   | Pros  | Cons  | NUNO advantages   |
 | :--- | :--- | :--- | :--- |
-| JSON | ubiquitous, strict | noisy, no comments, no tables | Arf! is easier to read and write, supports comments and tables. |
-| YAML | expressive | indentation traps, surprising coercions, many foot-guns | Arf! avoids indentation entirely and keeps rules deterministic. |
-| TOML | predictable, well structured | verbose, no table subcategories | Arf! supports structured tables and hierarchical organisation. |
-| TOON | clean tables | linear, no hierarchy | Arf! brings TOON's tabular clarity into a hierarchical world. |
+| JSON | ubiquitous, strict | noisy, no comments, no tables | NUNO is easier to read and write, supports comments and tables. |
+| YAML | expressive | indentation traps, surprising coercions, many foot-guns | NUNO avoids indentation entirely and keeps rules deterministic. |
+| TOML | predictable, well structured | verbose, no table subcategories | NUNO supports structured tables and hierarchical organisation. |
+| TOON | clean tables | linear, no hierarchy | NUNO brings TOON's tabular clarity into a hierarchical world. |
 
-## Why Choose Arf!
+## Why Choose NUNO
 * **Literate data** Mix prose paragraphs with structured content seamlessly (unique)
 * Straightforward hierarchical structure
 * Tables with subdivision (rare and extremely useful)
@@ -832,7 +834,7 @@ world:
 
 # Non-goals
 * No built-in string escaping or interpolation
-  * Arf! does not interpret escape sequences or quoted strings.
+  * NUNO does not interpret escape sequences or quoted strings.
 * No semantic meaning assigned to delimiters
   * Quotes and other characters are treated as ordinary text.
 * No whitespace-significant strings
@@ -844,7 +846,7 @@ world:
 * No indentation-based semantics
   * Whitespace is decorative only.
 * No schema or validation layer
-  * Arf! describes data; correctness is client responsibility.
+  * NUNO describes data; correctness is client responsibility.
 * No magical inference from empty lines
   * Parsing is driven by syntax, not layout.
 * No support for preserving trailing whitespace
