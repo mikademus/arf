@@ -1,12 +1,12 @@
-// arf_document.hpp - A Readable Format (Arf!) - Authoritative Document Model
+// nuno_document.hpp - A Readable Format (NUNO) - Authoritative Document Model
 // Version 0.3.0
 // Copyright 2025 Mikael Ueno A
 // Licenced as-is under the MIT licence.
 
-#ifndef ARF_DOCUMENT_HPP
-#define ARF_DOCUMENT_HPP
+#ifndef NUNO_DOCUMENT_HPP
+#define NUNO_DOCUMENT_HPP
 
-#include "arf_parser.hpp"
+#include "nuno_parser.hpp"
 
 #include <cassert>
 #include <functional>
@@ -17,7 +17,7 @@
 #include <span>
 #include <unordered_set>
 
-namespace arf
+namespace nuno
 {
     namespace 
     {
@@ -266,7 +266,7 @@ namespace arf
         // Convenience getter of internal node storage for a entity ID
         //----------------------------------------------------------
         template<typename T>
-        constexpr typename document::node_for<T>::type* get_node( ::arf::id<T> id_ ) noexcept
+        constexpr typename document::node_for<T>::type* get_node( ::nuno::id<T> id_ ) noexcept
         {
             using NodeT = typename document::node_for<T>::type;
 
@@ -1176,6 +1176,6 @@ namespace arf
     std::vector<document::table_row_view> document::rows()       const noexcept { return collect_views<table_row_view>(this, rows_); }
     std::vector<document::key_view>       document::keys()       const noexcept { return collect_views<key_view>(this, keys_); }
 
-} // namespace arf
+} // namespace nuno
 
-#endif // ARF_DOCUMENT_HPP
+#endif // NUNO_DOCUMENT_HPP

@@ -1,18 +1,18 @@
-// arf_parser.hpp - A Readable Format (Arf!) - Parser raw text to CST document
+// nuno_parser.hpp - A Readable Format (NUNO) - Parser raw text to CST document
 // Version 0.3.0
 // Copyright 2025 Mikael Ueno A
 // Licenced as-is under the MIT licence.
 
-#ifndef ARF_PARSER_HPP
-#define ARF_PARSER_HPP
+#ifndef NUNO_PARSER_HPP
+#define NUNO_PARSER_HPP
 
-#include "arf_core.hpp"
+#include "nuno_core.hpp"
 #include <assert.h>
 #include <cstdlib>
 #include <sstream>
 #include <iostream>
 
-namespace arf 
+namespace nuno 
 {
     #define DBG_EMIT std::cout << "[P] "
 
@@ -721,6 +721,6 @@ namespace arf
         
 #undef DBG_EMIT    
 
-} // namespace arf
+} // namespace nuno
 
-#endif // ARF_PARSER_HPP
+#endif // NUNO_PARSER_HPP

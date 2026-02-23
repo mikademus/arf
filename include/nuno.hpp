@@ -1,22 +1,22 @@
-// arf.hpp - A Readable Format (Arf!)
+// nuno.hpp - A Readable Format (NUNO)
 // Version 0.3.0
 // Copyright 2025 Mikael Ueno A
 // Licenced as-is under the MIT licence.
 
 //========================================================================
-// Arf! Core Principles:
+// NUNO Core Principles:
 //========================================================================
 //
 // The Authored-Intent Principle
 // ----------------------------
 // The authored form of a document is meaningful.
 // Order, locality, and grouping reflect intent.
-// Arf! preserves this intent even in the presence of errors or ambiguity.
+// NUNO preserves this intent even in the presence of errors or ambiguity.
 //
 //
 // The Value-Centric Principle
 // ---------------------------
-// Arf! treats values as the only fundamental entities.
+// NUNO treats values as the only fundamental entities.
 // Reflection locates values via addresses.
 // Query selects values via filters.
 // Structure exists to serve access, not to define data.
@@ -37,15 +37,15 @@
 //========================================================================
 
 
-#ifndef ARF_A_READABLE_FORMAT
-#define ARF_A_READABLE_FORMAT
+#ifndef NUNO_A_READABLE_FORMAT
+#define NUNO_A_READABLE_FORMAT
 
-#include "arf_core.hpp"
-#include "arf_parser.hpp"
-#include "arf_materialise.hpp"
-#include "arf_document.hpp"
+#include "nuno_core.hpp"
+#include "nuno_parser.hpp"
+#include "nuno_materialise.hpp"
+#include "nuno_document.hpp"
 
-namespace arf
+namespace nuno
 {
 //========================================================================
 // Document creation errors

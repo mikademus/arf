@@ -1,10 +1,10 @@
-#ifndef ARF_TESTS_PARSER__
-#define ARF_TESTS_PARSER__
+#ifndef NUNO_TESTS_PARSER__
+#define NUNO_TESTS_PARSER__
 
-#include "arf_test_harness.hpp"
-#include "../include/arf_parser.hpp"
+#include "nuno_test_harness.hpp"
+#include "../include/nuno_parser.hpp"
 
-namespace arf::tests
+namespace nuno::tests
 {
 //------------------------------------------
 // HELPERS
@@ -138,14 +138,14 @@ static bool parser_flushes_comment_on_structural_token()
 
 static bool parser_emits_paragraph_for_nongrammar_text()
 {
-    constexpr std::string_view src = "This is not a valid Arf construct\n";
+    constexpr std::string_view src = "This is not a valid NUNO construct\n";
     
     auto ctx = parse(src);
     
     EXPECT(ctx.document.events.size() == 1, "Expected one event");
     EXPECT(ctx.document.events[0].kind == parse_event_kind::paragraph, 
            "Expected paragraph event");
-    EXPECT(ctx.document.events[0].text == "This is not a valid Arf construct", 
+    EXPECT(ctx.document.events[0].text == "This is not a valid NUNO construct", 
            "Paragraph text incorrect");
     
     return true;
@@ -403,6 +403,6 @@ inline void run_parser_tests()
     RUN_TEST(parser_handles_mixed_content);
 }
 
-} // ns arf::tests
+} // ns nuno::tests
 
 #endif

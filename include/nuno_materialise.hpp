@@ -1,4 +1,4 @@
-// arf_materialise.hpp - A Readable Format (Arf!) - Semantic analysis and materialiser
+// nuno_materialise.hpp - A Readable Format (NUNO) - Semantic analysis and materialiser
 // Version 0.3.0
 // Copyright 2025 Mikael Ueno A
 // Licenced as-is under the MIT licence.
@@ -10,12 +10,12 @@
 // * Currently rows of invalid arity are rejected. This data must be preserved.
 // * There may be name conflicts when children to rejected categories are attached the next valid ancestor. This must be handled.
 
-#ifndef ARF_MATERIALISE_HPP
-#define ARF_MATERIALISE_HPP
+#ifndef NUNO_MATERIALISE_HPP
+#define NUNO_MATERIALISE_HPP
 
-#include "arf_core.hpp"
-#include "arf_parser.hpp"
-#include "arf_document.hpp"
+#include "nuno_core.hpp"
+#include "nuno_parser.hpp"
+#include "nuno_document.hpp"
 #include <array>
 #include <memory>
 #include <ranges>
@@ -23,7 +23,7 @@
 
 #include <iostream>
 
-namespace arf
+namespace nuno
 {
     #define DBG_EMIT std::cout << "[M] "
 

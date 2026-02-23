@@ -1,11 +1,11 @@
-#ifndef ARF_TESTS_HARNESS__
-#define ARF_TESTS_HARNESS__
+#ifndef NUNO_TESTS_HARNESS__
+#define NUNO_TESTS_HARNESS__
 
 #include <iostream>
 #include <vector>
 #include <string>
 
-namespace arf::tests
+namespace nuno::tests
 {
 
     struct test_result

@@ -1,13 +1,13 @@
-#ifndef ARF_TESTS_EDITOR__
-#define ARF_TESTS_EDITOR__
+#ifndef NUNO_TESTS_EDITOR__
+#define NUNO_TESTS_EDITOR__
 
-#include "arf_test_harness.hpp"
-#include "../include/arf_editor.hpp"
-#include "../include/arf.hpp"
+#include "nuno_test_harness.hpp"
+#include "../include/nuno_editor.hpp"
+#include "../include/nuno.hpp"
 
-namespace arf::tests
+namespace nuno::tests
 {
-using namespace arf;
+using namespace nuno;
 
 #define with(x) if (x; []{ return true; }())
 

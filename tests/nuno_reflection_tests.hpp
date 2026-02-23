@@ -1,14 +1,14 @@
-#ifndef ARF_TESTS_REFLECTION__
-#define ARF_TESTS_REFLECTION__
+#ifndef NUNO_TESTS_REFLECTION__
+#define NUNO_TESTS_REFLECTION__
 
-#include "arf_test_harness.hpp"
-#include "../include/arf.hpp"
-#include "../include/arf_reflect.hpp"
+#include "nuno_test_harness.hpp"
+#include "../include/nuno.hpp"
+#include "../include/nuno_reflect.hpp"
 
-namespace arf::tests
+namespace nuno::tests
 {
 template <typename T>
-const T* get_step(const arf::reflect::address& addr)
+const T* get_step(const nuno::reflect::address& addr)
 {
     if (addr.steps.empty())
         return nullptr;
@@ -19,7 +19,7 @@ const T* get_step(const arf::reflect::address& addr)
 
 static bool reflect_empty_address_is_root()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load("a:\n  x = 1\n");
 
@@ -40,7 +40,7 @@ static bool reflect_empty_address_is_root()
 
 static bool reflect_empty_address_has_item_but_no_value()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load("a:\n  x = 1\n");
 
@@ -60,7 +60,7 @@ static bool reflect_empty_address_has_item_but_no_value()
 
 static bool reflect_top_level_category_key()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load("a:\n  x = 1\n");
 
@@ -86,7 +86,7 @@ static bool reflect_top_level_category_key()
 
 static bool reflect_explicit_subcategory_key()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -114,7 +114,7 @@ static bool reflect_explicit_subcategory_key()
 
 static bool reflect_subcategory_without_context_fails()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load("a:\n  x = 1\n");
 
@@ -134,7 +134,7 @@ static bool reflect_subcategory_without_context_fails()
 
 static bool reflect_top_level_category_does_not_nest()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -158,7 +158,7 @@ static bool reflect_top_level_category_does_not_nest()
 
 static bool reflect_table_cell_by_column_name()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -193,7 +193,7 @@ static bool reflect_table_cell_by_column_name()
 
 static bool reflect_invalid_column_fails()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -228,7 +228,7 @@ static bool reflect_invalid_column_fails()
 
 static bool reflect_array_index()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load("a:\n  x:int[] = 1|2|3\n");
 
@@ -252,7 +252,7 @@ static bool reflect_array_index()
 
 static bool reflect_array_index_out_of_bounds_fails()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load("a:\n  x:int[] = 1|2|3\n");
 
@@ -279,7 +279,7 @@ static bool reflect_array_index_out_of_bounds_fails()
 
 static bool reflect_partial_prefix_stops_at_error()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -313,7 +313,7 @@ static bool reflect_partial_prefix_stops_at_error()
 
 static bool reflect_partial_prefix_yields_last_valid_item()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -342,7 +342,7 @@ static bool reflect_partial_prefix_yields_last_valid_item()
 
 static bool reflect_partial_prefix_preserves_last_structure()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -373,7 +373,7 @@ static bool reflect_partial_prefix_preserves_last_structure()
 
 static bool reflect_indented_but_not_subcategory_does_not_resolve()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -398,7 +398,7 @@ static bool reflect_indented_but_not_subcategory_does_not_resolve()
 
 static bool inspect_reports_partial_progress()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load("a:\n  x = 1\n");
 
@@ -423,7 +423,7 @@ static bool inspect_reports_partial_progress()
 
 static bool structural_children_of_category()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -477,7 +477,7 @@ static bool structural_children_of_category()
 
 static bool structural_children_after_failed_inspection()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -513,7 +513,7 @@ static bool structural_children_after_failed_inspection()
 
 static bool structural_children_of_table_row()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -554,7 +554,7 @@ static bool structural_children_of_table_row()
 
 static bool structural_children_of_scalar_value_is_empty()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load("a:\n  x = 1\n");
 
@@ -575,7 +575,7 @@ static bool structural_children_of_scalar_value_is_empty()
 
 static bool structural_extend_address_from_category()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -610,7 +610,7 @@ static bool structural_extend_address_from_category()
 
 static bool structural_extend_address_after_failed_inspection()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -649,7 +649,7 @@ static bool structural_extend_address_after_failed_inspection()
 
 static bool structural_prefix_children_matching()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -674,7 +674,7 @@ static bool structural_prefix_children_matching()
 
 static bool structural_children_of_scalar_is_empty()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load("a:\n  x = 1\n");
 
@@ -694,7 +694,7 @@ static bool structural_children_of_scalar_is_empty()
 
 static bool prefix_children_empty_prefix_lists_all()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -717,7 +717,7 @@ static bool prefix_children_empty_prefix_lists_all()
 
 static bool prefix_children_excludes_anonymous()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -740,7 +740,7 @@ static bool prefix_children_excludes_anonymous()
 
 static bool prefix_children_preserve_order()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -763,7 +763,7 @@ static bool prefix_children_preserve_order()
 
 static bool suggest_next_after_failed_inspection()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -798,7 +798,7 @@ static bool suggest_next_after_failed_inspection()
 
 static bool suggest_next_prefix_filters_children()
 {
-    using namespace arf::reflect;
+    using namespace nuno::reflect;
 
     auto ctx = load(
         "a:\n"
@@ -862,6 +862,6 @@ inline void run_reflection_tests()
     RUN_TEST(suggest_next_prefix_filters_children);
 }
 
-} // namespace arf::tests
+} // namespace nuno::tests
 
 #endif

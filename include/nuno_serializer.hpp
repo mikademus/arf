@@ -1,17 +1,17 @@
-// arf_serializer.hpp - A Readable Format (Arf!) - Serializer
+// nuno_serializer.hpp - A Readable Format (NUNO) - Serializer
 // Version 0.3.0
 // Copyright 2025 Mikael Ueno A
 // Licenced as-is under the MIT licence.
 
-#ifndef ARF_SERIALIZER_HPP
-#define ARF_SERIALIZER_HPP
+#ifndef NUNO_SERIALIZER_HPP
+#define NUNO_SERIALIZER_HPP
 
-#include "arf_document.hpp"
+#include "nuno_document.hpp"
 #include <charconv>
 #include <ostream>
 #include <cassert>
 
-namespace arf
+namespace nuno
 {
 
     #define DBG_EMIT std::cout << "[S] "
@@ -869,6 +869,6 @@ namespace arf
 
     #undef DBG_EMIT
 
-} // namespace arf
+} // namespace nuno
 
-#endif // ARF_SERIALIZER_HPP
+#endif // NUNO_SERIALIZER_HPP

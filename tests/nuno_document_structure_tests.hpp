@@ -1,15 +1,15 @@
-#ifndef ARF_TESTS_DOCUMENT_STRUCTURE__
-#define ARF_TESTS_DOCUMENT_STRUCTURE__
+#ifndef NUNO_TESTS_DOCUMENT_STRUCTURE__
+#define NUNO_TESTS_DOCUMENT_STRUCTURE__
 
-#include "arf_test_harness.hpp"
-#include "../include/arf.hpp"
+#include "nuno_test_harness.hpp"
+#include "../include/nuno.hpp"
 
-namespace arf::tests
+namespace nuno::tests
 {
 
 static bool root_always_exists()
 {
-    auto doc = arf::load("");
+    auto doc = nuno::load("");
     EXPECT(doc.has_errors() == false, "");
     EXPECT(doc->category_count() >= 1, "");
     EXPECT(doc->root().has_value(), "");

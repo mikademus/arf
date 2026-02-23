@@ -1,4 +1,4 @@
-// arf_reflect.hpp - A Readable Format (Arf!) - Reflection Interface
+// nuno_reflect.hpp - A Readable Format (NUNO) - Reflection Interface
 // Version 0.3.0
 // Copyright 2025 Mikael Ueno A
 // Licenced as-is under the MIT licence.
@@ -7,11 +7,11 @@
 // There are no node identities, no row indices, no cell objects.
 // Only values exist. Everything else is an address that can reach them.
 
-#ifndef ARF_REFLECT_HPP
-#define ARF_REFLECT_HPP
+#ifndef NUNO_REFLECT_HPP
+#define NUNO_REFLECT_HPP
 
-#include "arf_core.hpp"
-#include "arf_document.hpp"
+#include "nuno_core.hpp"
+#include "nuno_document.hpp"
 
 #include <array>
 #include <utility>
@@ -20,7 +20,7 @@
 #include <optional>
 #include <string_view>
 
-namespace arf::reflect
+namespace nuno::reflect
 {
 
 // ------------------------------------------------------------
@@ -121,7 +121,7 @@ namespace arf::reflect
 
     struct key_step
     {
-        explicit key_step(arf::key_id id) : id(id) {}
+        explicit key_step(nuno::key_id id) : id(id) {}
         explicit key_step(std::string_view n) : id(n) {}
         std::variant<key_id, std::string_view> id;
     };
@@ -1040,6 +1040,6 @@ namespace arf::reflect
         return res.value;
     }
 
-} // namespace arf::reflect
+} // namespace nuno::reflect
 
-#endif // ARF_REFLECT_HPP
+#endif // NUNO_REFLECT_HPP
