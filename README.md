@@ -200,10 +200,10 @@ experiment:
   :inhibitor_screen
     // Competitive inhibition assay with known inhibitors
     # compound       IC50_mM  inhibition_type
-      Oxamate       2.4      competitive
-      Gossypol      0.8      uncompetitive
-      FX11          0.3      non-competitive
-  /
+      Oxamate        2.4      competitive
+      Gossypol       0.8      uncompetitive
+      FX11           0.3      non-competitive
+    /
 
 /experiment
 ```
